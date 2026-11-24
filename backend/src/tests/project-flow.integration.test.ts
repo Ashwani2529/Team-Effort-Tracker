@@ -10,7 +10,7 @@ integration('member-bound project flow', () => {
   let mongo: MongoMemoryServer;
 
   beforeAll(async () => {
-    mongo = await MongoMemoryServer.create();
+    mongo = await MongoMemoryServer.create({ instance: { launchTimeout: 60_000 } });
     await connectDatabase(mongo.getUri());
     app.set('io', { to: () => ({ emit: () => undefined }) });
   }, 120_000);
@@ -36,6 +36,7 @@ integration('member-bound project flow', () => {
 
     let snapshot = await creator.get(`/api/v1/projects/${projectId}/snapshot`).expect(200);
     expect(snapshot.body.access).toMatchObject({ role: 'admin', memberName: 'Project Creator', adminVerified: true });
+    const creatorId = snapshot.body.access.memberId;
 
     await creator.post(`/api/v1/projects/${projectId}/team-mode`).expect(200);
     await creator.post(`/api/v1/projects/${projectId}/admin-mode`).send({}).expect(200);
@@ -50,8 +51,19 @@ integration('member-bound project flow', () => {
     await member.post(`/api/v1/projects/${projectId}/admin-mode`).send({}).expect(200);
 
     const tower = await member.post(`/api/v1/projects/${projectId}/towers`).send({ name: 'Platform', color: '#5b7cfa' }).expect(201);
+    await member.post(`/api/v1/projects/${projectId}/team-mode`).expect(200);
     snapshot = await member.get(`/api/v1/projects/${projectId}/snapshot`).expect(200);
     const taylor = snapshot.body.members.find((value: any) => value.email === 'taylor@example.com');
+    await member.put(`/api/v1/projects/${projectId}/roster/${creatorId}/2026-11-24`).send({ status: 'night' }).expect(403);
+    await member.put(`/api/v1/projects/${projectId}/roster/${taylor._id}/2026-11-24`).send({ status: 'leave' }).expect(200);
+    snapshot = await member.get(`/api/v1/projects/${projectId}/snapshot`).expect(200);
+    expect(snapshot.body.rosterOverrides).toContainEqual(expect.objectContaining({ memberId: taylor._id, date: '2026-11-24', shiftId: 'leave' }));
+    expect(snapshot.body.leaves).toContainEqual(expect.objectContaining({ memberId: taylor._id, startDate: '2026-11-24', endDate: '2026-11-24', status: 'approved', source: 'roster' }));
+    await member.put(`/api/v1/projects/${projectId}/roster/${taylor._id}/2026-11-24`).send({ status: 'night' }).expect(200);
+    await creator.put(`/api/v1/projects/${projectId}/roster/${taylor._id}/2026-11-25`).send({ status: 'off' }).expect(200);
+    snapshot = await member.get(`/api/v1/projects/${projectId}/snapshot`).expect(200);
+    expect(snapshot.body.leaves).not.toContainEqual(expect.objectContaining({ memberId: taylor._id, startDate: '2026-11-24', source: 'roster' }));
+    expect(snapshot.body.rosterOverrides).toEqual(expect.arrayContaining([expect.objectContaining({ memberId: taylor._id, date: '2026-11-24', shiftId: 'night' }), expect.objectContaining({ memberId: taylor._id, date: '2026-11-25', shiftId: 'off' })]));
     const task = await member.post(`/api/v1/projects/${projectId}/deliverables`).send({
       title: 'Ship integration flow', description: '', ticket: 'INT-1', towerId: tower.body._id, status: 'doing', priority: 'high',
       primaryAssigneeId: taylor._id, contributorIds: [], flagIds: [], startDate: '2026-11-24', dueDate: '2026-11-30',
@@ -59,12 +71,23 @@ integration('member-bound project flow', () => {
       plannedDeploymentDate: null, defects: 0, escapedDefects: 0, testsTotal: 0, testsAutomated: 0, automatedDeployment: false, hoursSaved: 0
     }).expect(201);
 
-    await member.post(`/api/v1/projects/${projectId}/deliverables/${task.body._id}/comments`).send({ text: 'Identity is preserved' }).expect(201);
-    await member.post(`/api/v1/projects/${projectId}/deliverables/${task.body._id}/worklogs`).send({ workDate: '2026-11-24', minutes: 45, note: 'Validated the release path' }).expect(201);
+    const comment = await member.post(`/api/v1/projects/${projectId}/deliverables/${task.body._id}/comments`).send({ text: 'Identity is preserved' }).expect(201);
+    const worklog = await member.post(`/api/v1/projects/${projectId}/deliverables/${task.body._id}/worklogs`).send({ workDate: '2026-11-24', minutes: 45, note: 'Validated the release path' }).expect(201);
+    await member.patch(`/api/v1/projects/${projectId}/deliverables/${task.body._id}/comments/${comment.body._id}`).send({ text: 'Identity and edits are preserved' }).expect(200);
+    await member.patch(`/api/v1/projects/${projectId}/deliverables/${task.body._id}/worklogs/${worklog.body._id}`).send({ workDate: '2026-11-25', minutes: 60, note: 'Validated and corrected the release path' }).expect(200);
     snapshot = await member.get(`/api/v1/projects/${projectId}/snapshot`).expect(200);
-    const refreshed = snapshot.body.deliverables.find((value: any) => value._id === task.body._id);
+    let refreshed = snapshot.body.deliverables.find((value: any) => value._id === task.body._id);
     expect(refreshed.comments.at(-1).authorName).toBe('Taylor Member');
-    expect(refreshed.worklogs[0]).toMatchObject({ authorName: 'Taylor Member', minutes: 45, note: 'Validated the release path' });
+    expect(refreshed.comments.at(-1).text).toBe('Identity and edits are preserved');
+    expect(refreshed.worklogs[0]).toMatchObject({ authorName: 'Taylor Member', workDate: '2026-11-25', minutes: 60, note: 'Validated and corrected the release path' });
+    expect(refreshed.worklogMinutes).toBe(60);
+
+    await member.put(`/api/v1/projects/${projectId}/deliverables/${task.body._id}`).set('If-Match', String(refreshed.__v)).send({ ...task.body, dueDate: '2026-12-02' }).expect(200);
+    await member.delete(`/api/v1/projects/${projectId}/deliverables/${task.body._id}/comments/${comment.body._id}`).expect(204);
+    await member.delete(`/api/v1/projects/${projectId}/deliverables/${task.body._id}/worklogs/${worklog.body._id}`).expect(204);
+    snapshot = await member.get(`/api/v1/projects/${projectId}/snapshot`).expect(200);
+    refreshed = snapshot.body.deliverables.find((value: any) => value._id === task.body._id);
+    expect(refreshed).toMatchObject({ dueDate: '2026-12-02', worklogMinutes: 0, comments: [], worklogs: [] });
 
     await member.patch(`/api/v1/projects/${projectId}/deliverables/${task.body._id}/status`).send({ status: 'done', version: refreshed.__v }).expect(200);
     snapshot = await member.get(`/api/v1/projects/${projectId}/snapshot`).expect(200);

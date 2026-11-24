@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { deliverableInputSchema } from '@effort-tracker/shared';
 import { clearProjectSession, hashPassword, sessionFromRequest, setProjectSession, verifyPassword, verifySetupPassword } from '../middleware/auth.js';
 import { projectAccess, requireCapability } from '../middleware/access.js';
-import { AuditEvent, Deliverable, DirectoryContact, Flag, Leave, LegacyActivity, Member, Notification, Organization, Portfolio, Project, Tower, Worklog } from '../models/index.js';
+import { AuditEvent, Deliverable, DirectoryContact, Flag, Leave, LegacyActivity, Member, Notification, Organization, Portfolio, Project, RosterOverride, Tower, Worklog } from '../models/index.js';
 
 const router = Router();
 const passwordSchema = z.string().min(8).max(128);
@@ -13,6 +13,7 @@ const passwordLimit = rateLimit({ windowMs: 15 * 60_000, limit: 20, standardHead
 const istDate = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
 const scope = (req: any) => ({ organizationId: req.access.organizationId, portfolioId: req.access.portfolioId, projectId: req.access.projectId });
 const audit = (req: any, action: string, entityType: string, entityId: string, before?: unknown, after?: unknown) => AuditEvent.create({ ...scope(req), actorMode: req.access.role, action, entityType, entityId, before, after });
+const canManageEntry = (req: any, memberId: unknown) => req.access.role === 'admin' || String(memberId || '') === String(req.access.memberId);
 const slug = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 const taxonomySchema = z.object({ name: z.string().trim().min(1).max(80), color: z.string().regex(/^#[0-9a-fA-F]{6}$/) });
 async function validateFlags(req: any, flagIds: string[]): Promise<string[]> {
@@ -78,15 +79,15 @@ router.post('/projects/:projectId/lock', (_req, res) => { clearProjectSession(re
 
 router.get('/projects/:projectId/snapshot', async (req, res) => {
   const q = scope(req);
-  const [project, towers, flags, members, deliverables, worklogs, leaves, activity, directory, notifications] = await Promise.all([
+  const [project, towers, flags, members, deliverables, worklogs, leaves, rosterOverrides, activity, directory, notifications] = await Promise.all([
     Project.findById(req.params.projectId).lean(), Tower.find({ ...q, archivedAt: null }).sort({ name: 1 }).lean(), Flag.find({ ...q, archivedAt: null }).sort({ name: 1 }).lean(), Member.find({ ...q, archivedAt: null }).sort({ name: 1 }).lean(),
-    Deliverable.find({ ...q, deletedAt: null }).sort({ updatedAt: -1 }).lean(), Worklog.find({ ...q, deletedAt: null }).sort({ createdAt: -1 }).lean(), Leave.find(q).lean(), LegacyActivity.find(q).sort({ at: -1 }).limit(100).lean(),
+    Deliverable.find({ ...q, deletedAt: null }).sort({ updatedAt: -1 }).lean(), Worklog.find({ ...q, deletedAt: null }).sort({ createdAt: -1 }).lean(), Leave.find(q).lean(), RosterOverride.find(q).sort({ date: 1 }).lean(), LegacyActivity.find(q).sort({ at: -1 }).limit(100).lean(),
     DirectoryContact.find(q).lean(), Notification.find(q).sort({ createdAt: -1 }).limit(50).lean()
   ]);
   const worklogsByDeliverable = new Map<string, any[]>();
   for (const worklog of worklogs) { const key = String(worklog.deliverableId); worklogsByDeliverable.set(key, [...(worklogsByDeliverable.get(key) || []), worklog]); }
   for (const deliverable of deliverables as any[]) deliverable.worklogs = worklogsByDeliverable.get(String(deliverable._id)) || [];
-  res.json({ project, towers, flags, members, deliverables, leaves, activity, directory, notifications, access: req.access, serverDate: istDate() });
+  res.json({ project, towers, flags, members, deliverables, leaves, rosterOverrides, activity, directory, notifications, access: req.access, serverDate: istDate() });
 });
 
 router.post('/projects/:projectId/towers', requireCapability('admin'), async (req, res) => {
@@ -140,6 +141,28 @@ router.post('/projects/:projectId/members', requireCapability('manageMembers'), 
   const body = z.object({ name: z.string().trim().min(2).max(120), email: z.string().trim().email().transform((value) => value.toLowerCase()), title: z.string().trim().max(120).optional(), department: z.string().trim().max(120).optional(), allocationPercent: z.number().int().min(1).max(100).default(100) }).parse(req.body);
   const member = await Member.create({ ...scope(req), ...body, workingDays: [0, 1, 2, 3, 4], shiftId: 'general', color: '#5b7cfa' });
   await audit(req, 'member.created', 'member', String(member._id), undefined, member.toObject()); res.status(201).json(member);
+});
+
+router.put('/projects/:projectId/roster/:memberId/:date', requireCapability('edit'), async (req, res) => {
+  const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).parse(req.params.date);
+  const { status } = z.object({ status: z.enum(['general', 'night', 'off', 'leave']) }).parse(req.body);
+  const member = await Member.findOne({ _id: req.params.memberId, ...scope(req), archivedAt: null });
+  if (!member) { res.status(404).json({ error: 'member_not_found' }); return; }
+  if (req.access!.role !== 'admin' && String(member._id) !== String(req.access!.memberId)) {
+    res.status(403).json({ error: 'roster_member_forbidden', message: 'Team members can only edit their own roster.' }); return;
+  }
+  const filter = { ...scope(req), memberId: String(member._id), date };
+  const previous = await RosterOverride.findOne(filter).lean();
+  const override = await RosterOverride.findOneAndUpdate(filter, { $set: { shiftId: status } }, { upsert: true, new: true, setDefaultsOnInsert: true });
+  const rosterLeave = { ...scope(req), memberId: String(member._id), startDate: date, endDate: date, source: 'roster' };
+  if (status === 'leave') {
+    await Leave.findOneAndUpdate(rosterLeave, { $set: { type: 'leave', note: 'Roster leave', status: 'approved' } }, { upsert: true, new: true, setDefaultsOnInsert: true });
+  } else {
+    await Leave.deleteMany(rosterLeave);
+  }
+  await audit(req, 'roster.updated', 'rosterOverride', String(override._id), previous, override.toObject());
+  req.app.get('io')?.to(`project:${req.params.projectId}`).emit('roster:updated', { memberId: String(member._id), date, status });
+  res.json(override);
 });
 
 router.post('/projects/:projectId/deliverables', requireCapability('edit'), async (req, res) => {
@@ -199,10 +222,59 @@ router.post('/projects/:projectId/deliverables/:id/comments', requireCapability(
   await audit(req, 'comment.created', 'deliverable', String(item._id), undefined, { text }); res.status(201).json(item.comments.at(-1));
 });
 
+router.patch('/projects/:projectId/deliverables/:id/comments/:commentId', requireCapability('edit'), async (req, res) => {
+  const { text } = z.object({ text: z.string().trim().min(1).max(10000) }).parse(req.body);
+  const item = await Deliverable.findOne({ _id: req.params.id, ...scope(req), deletedAt: null });
+  if (!item) { res.status(404).json({ error: 'deliverable_not_found' }); return; }
+  const comment = (item.comments as any).id(req.params.commentId);
+  if (!comment) { res.status(404).json({ error: 'comment_not_found' }); return; }
+  if (!canManageEntry(req, comment.authorId)) { res.status(403).json({ error: 'comment_not_owned', message: 'Team members can only edit their own comments.' }); return; }
+  const before = comment.toObject(); comment.text = text; await item.save();
+  await audit(req, 'comment.updated', 'deliverable', String(item._id), before, comment.toObject());
+  req.app.get('io')?.to(`project:${req.params.projectId}`).emit('deliverable:updated', item); res.json(comment);
+});
+
+router.delete('/projects/:projectId/deliverables/:id/comments/:commentId', requireCapability('edit'), async (req, res) => {
+  const item = await Deliverable.findOne({ _id: req.params.id, ...scope(req), deletedAt: null });
+  if (!item) { res.status(404).json({ error: 'deliverable_not_found' }); return; }
+  const comment = (item.comments as any).id(req.params.commentId);
+  if (!comment) { res.status(404).json({ error: 'comment_not_found' }); return; }
+  if (!canManageEntry(req, comment.authorId)) { res.status(403).json({ error: 'comment_not_owned', message: 'Team members can only delete their own comments.' }); return; }
+  const before = comment.toObject(); (item.comments as any).pull({ _id: comment._id }); await item.save();
+  await audit(req, 'comment.deleted', 'deliverable', String(item._id), before);
+  req.app.get('io')?.to(`project:${req.params.projectId}`).emit('deliverable:updated', item); res.status(204).end();
+});
+
 router.post('/projects/:projectId/deliverables/:id/worklogs', requireCapability('edit'), async (req, res) => {
   const body = z.object({ workDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), minutes: z.number().int().positive().max(1440), note: z.string().trim().min(1).max(1000) }).parse(req.body);
   const item = await Deliverable.findOne({ _id: req.params.id, ...scope(req), deletedAt: null }); if (!item) { res.status(404).json({ error: 'deliverable_not_found' }); return; }
   const worklog = await Worklog.create({ ...scope(req), deliverableId: item._id, memberId: req.access!.memberId, authorName: req.access!.memberName, ...body, source: 'manual' }); item.worklogMinutes = (item.worklogMinutes || 0) + body.minutes; await item.save(); await audit(req, 'worklog.created', 'worklog', String(worklog._id), undefined, worklog.toObject()); req.app.get('io')?.to(`project:${req.params.projectId}`).emit('deliverable:updated', item); res.status(201).json(worklog);
+});
+
+router.patch('/projects/:projectId/deliverables/:id/worklogs/:worklogId', requireCapability('edit'), async (req, res) => {
+  const body = z.object({ workDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), minutes: z.number().int().positive().max(1440), note: z.string().trim().min(1).max(1000) }).parse(req.body);
+  const worklog = await Worklog.findOne({ _id: req.params.worklogId, deliverableId: req.params.id, ...scope(req), deletedAt: null });
+  if (!worklog) { res.status(404).json({ error: 'worklog_not_found' }); return; }
+  if (!canManageEntry(req, (worklog as any).memberId)) { res.status(403).json({ error: 'worklog_not_owned', message: 'Team members can only edit their own worklogs.' }); return; }
+  const item = await Deliverable.findOne({ _id: req.params.id, ...scope(req), deletedAt: null });
+  if (!item) { res.status(404).json({ error: 'deliverable_not_found' }); return; }
+  const before = worklog.toObject(), priorMinutes = Number((worklog as any).minutes || 0);
+  Object.assign(worklog, body); await worklog.save();
+  item.worklogMinutes = Math.max(0, Number(item.worklogMinutes || 0) + body.minutes - priorMinutes); await item.save();
+  await audit(req, 'worklog.updated', 'worklog', String(worklog._id), before, worklog.toObject());
+  req.app.get('io')?.to(`project:${req.params.projectId}`).emit('deliverable:updated', item); res.json(worklog);
+});
+
+router.delete('/projects/:projectId/deliverables/:id/worklogs/:worklogId', requireCapability('edit'), async (req, res) => {
+  const worklog = await Worklog.findOne({ _id: req.params.worklogId, deliverableId: req.params.id, ...scope(req), deletedAt: null });
+  if (!worklog) { res.status(404).json({ error: 'worklog_not_found' }); return; }
+  if (!canManageEntry(req, (worklog as any).memberId)) { res.status(403).json({ error: 'worklog_not_owned', message: 'Team members can only delete their own worklogs.' }); return; }
+  const item = await Deliverable.findOne({ _id: req.params.id, ...scope(req), deletedAt: null });
+  if (!item) { res.status(404).json({ error: 'deliverable_not_found' }); return; }
+  const before = worklog.toObject(); (worklog as any).deletedAt = new Date(); await worklog.save();
+  item.worklogMinutes = Math.max(0, Number(item.worklogMinutes || 0) - Number((worklog as any).minutes || 0)); await item.save();
+  await audit(req, 'worklog.deleted', 'worklog', String(worklog._id), before);
+  req.app.get('io')?.to(`project:${req.params.projectId}`).emit('deliverable:updated', item); res.status(204).end();
 });
 
 router.patch('/projects/:projectId/notifications/:id/read', async (req, res) => { const notification = await Notification.findOneAndUpdate({ _id: req.params.id, ...scope(req) }, { $set: { readAt: new Date() } }, { new: true }); res.json(notification); });

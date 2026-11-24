@@ -4,12 +4,14 @@ import { useOutletContext, useParams } from 'react-router-dom';
 import { DndContext, useDraggable, useDroppable, type DragEndEvent } from '@dnd-kit/core';
 import { createColumnHelper, flexRender, getCoreRowModel, useReactTable } from '@tanstack/react-table';
 import { addDays, differenceInCalendarDays, endOfMonth, endOfWeek, format, parseISO, startOfMonth, startOfWeek } from 'date-fns';
-import { AlertCircle, ArrowUpRight, CalendarClock, CheckCircle2, CircleDot, Clock3, Download, Filter, GripVertical, Plus, ShieldCheck } from 'lucide-react';
+import { AlertCircle, ArrowUpRight, CalendarClock, CalendarDays, CheckCircle2, CircleDot, Clock3, Download, Filter, GripVertical, Plus, ShieldCheck } from 'lucide-react';
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { isInPeriod, STATUSES, type PeriodRange, type Role, type Status } from '@effort-tracker/shared';
 import { useApi } from '../hooks/use-api';
 import { searchDeliverables } from '../lib/search';
-import type { Deliverable, Snapshot } from '../types';
+import { calendarActivityForDate, monthGridDates, rosterStatusFor } from '../lib/scheduling';
+import type { CalendarTaskActivity } from '../lib/scheduling';
+import type { Deliverable, RosterStatus, Snapshot } from '../types';
 import { TaskDrawer } from '../features/deliverables/TaskDrawer';
 import { TaxonomyManager } from '../features/admin/TaxonomyManager';
 
@@ -35,18 +37,25 @@ const remaining = (item: Deliverable) => Math.max(0, estimate(item) - actualHour
 
 export function Page() {
   const ctx = useOutletContext<Context>(), { projectId = '', view = 'overview' } = useParams(), call = useApi(), client = useQueryClient();
+  const [rosterDate, setRosterDate] = useState(ctx.snapshot.serverDate), [calendarMonth, setCalendarMonth] = useState(ctx.snapshot.serverDate.slice(0, 7)), [calendarStatus, setCalendarStatus] = useState<Status | 'all'>('all');
   const range = useMemo(() => rangeFor(ctx.period, ctx.snapshot.serverDate), [ctx.period, ctx.snapshot.serverDate]);
-  const items = useMemo(() => searchDeliverables(ctx.snapshot, ctx.search, ctx.snapshot.deliverables.filter((item) => isInPeriod(item, range))), [ctx.snapshot, range, ctx.search]);
+  const searchedItems = useMemo(() => searchDeliverables(ctx.snapshot, ctx.search, ctx.snapshot.deliverables), [ctx.snapshot, ctx.search]);
+  const items = useMemo(() => searchedItems.filter((item) => isInPeriod(item, range)), [searchedItems, range]);
+  const calendarItems = useMemo(() => calendarStatus === 'all' ? searchedItems : searchedItems.filter((item) => item.status === calendarStatus), [searchedItems, calendarStatus]);
   const status = useMutation({ mutationFn: ({ item, next }: { item: Deliverable; next: Status }) => call<Deliverable>(`/projects/${projectId}/deliverables/${item._id}/status`, { method: 'PATCH', body: JSON.stringify({ status: next, version: item.__v }) }), onSuccess: () => client.invalidateQueries({ queryKey: ['snapshot', projectId] }) });
   const common = { snapshot: ctx.snapshot, items, openTask: ctx.openTask, projectId, role: ctx.snapshot.access.role };
   if ((view === 'reports' || view === 'admin') && ctx.snapshot.access.role !== 'admin') return <section className="page"><div className="premium-locked"><ShieldCheck /><span className="eyebrow">Admin access</span><h2>Switch to Admin mode</h2><p>This premium area and its exports are protected by the project admin password.</p></div></section>;
-  const views: Record<string, React.ReactNode> = { overview: <Overview {...common} />, framework: <Framework {...common} />, board: <Board {...common} onStatus={(item, next) => status.mutate({ item, next })} />, list: <WorkList {...common} />, assignees: <Assignees {...common} />, timeline: <Timeline {...common} />, calendar: <Calendar {...common} />, roster: <Roster {...common} />, team: <Team {...common} />, reports: <Reports {...common} />, activity: <ActivityView {...common} />, admin: <Admin {...common} /> };
-  return <><section className="page"><PageHeader view={view} count={items.length} period={ctx.period} setPeriod={ctx.setPeriod} onCreate={() => ctx.openTask('new')} />{status.error && <div className="error-banner">{status.error.message}</div>}{views[view] || <div className="empty-state">Unknown view.</div>}</section>{ctx.taskId && <TaskDrawer snapshot={ctx.snapshot} id={ctx.taskId} onClose={ctx.closeTask} />}</>;
+  const views: Record<string, React.ReactNode> = { overview: <Overview {...common} />, framework: <Framework {...common} />, board: <Board {...common} onStatus={(item, next) => status.mutate({ item, next })} />, list: <WorkList {...common} />, assignees: <Assignees {...common} />, timeline: <Timeline {...common} />, calendar: <Calendar {...common} items={calendarItems} month={calendarMonth} />, roster: <Roster {...common} selectedDate={rosterDate} />, team: <Team {...common} />, reports: <Reports {...common} />, activity: <ActivityView {...common} />, admin: <Admin {...common} /> };
+  return <><section className="page"><PageHeader view={view} count={view === 'calendar' ? calendarItems.length : items.length} period={ctx.period} setPeriod={ctx.setPeriod} onCreate={() => ctx.openTask('new')} rosterDate={rosterDate} setRosterDate={setRosterDate} calendarMonth={calendarMonth} setCalendarMonth={setCalendarMonth} calendarStatus={calendarStatus} setCalendarStatus={setCalendarStatus} />{status.error && <div className="error-banner">{status.error.message}</div>}{views[view] || <div className="empty-state">Unknown view.</div>}</section>{ctx.taskId && <TaskDrawer snapshot={ctx.snapshot} id={ctx.taskId} onClose={ctx.closeTask} />}</>;
 }
 
-function PageHeader({ view, count, period, setPeriod, onCreate }: { view: string; count: number; period: string; setPeriod: (v: string) => void; onCreate: () => void }) {
+function PageHeader({ view, count, period, setPeriod, onCreate, rosterDate, setRosterDate, calendarMonth, setCalendarMonth, calendarStatus, setCalendarStatus }: { view: string; count: number; period: string; setPeriod: (v: string) => void; onCreate: () => void; rosterDate: string; setRosterDate: (v: string) => void; calendarMonth: string; setCalendarMonth: (v: string) => void; calendarStatus: Status | 'all'; setCalendarStatus: (v: Status | 'all') => void }) {
   const title = ({ framework: 'Delivery Framework', assignees: 'Assignees', timeline: 'Timeline', calendar: 'Calendar', roster: 'Shift Roster', team: 'Team', reports: 'Reports', activity: 'Activity', admin: 'Administration' } as Record<string, string>)[view] || view[0]!.toUpperCase() + view.slice(1);
-  return <div className="page-head"><div><span className="eyebrow">Project workspace</span><h1>{title}</h1><p>{count.toLocaleString()} deliverables in this view</p></div><div className="page-actions"><label className="period-select"><Filter size={15} /><select value={period} onChange={(e) => setPeriod(e.target.value)}><option value="active">All statuses</option><option value="week">This week + overdue</option><option value="month">This month</option><option value="day">Today</option><option value="history">All History</option></select></label><button className="button primary" onClick={onCreate}><Plus size={16} /> New Deliverable</button></div></div>;
+  const subtitle = view === 'roster' ? 'Weekly availability for the project team' : `${count.toLocaleString()} deliverables in this view`;
+  return <div className="page-head"><div><span className="eyebrow">Project workspace</span><h1>{title}</h1><p>{subtitle}</p></div><div className="page-actions">
+    {view === 'roster' && <label className="date-select"><CalendarDays size={15} /><input aria-label="Roster week" type="date" value={rosterDate} onChange={(event) => event.target.value && setRosterDate(event.target.value)} /></label>}
+    {view === 'calendar' ? <><label className="date-select"><CalendarDays size={15} /><input aria-label="Calendar month" type="month" value={calendarMonth} onChange={(event) => event.target.value && setCalendarMonth(event.target.value)} /></label><label className="period-select"><Filter size={15} /><select aria-label="Calendar status" value={calendarStatus} onChange={(event) => setCalendarStatus(event.target.value as Status | 'all')}><option value="all">All statuses</option>{STATUSES.map((value) => <option key={value} value={value}>{stageMeta[value].label}</option>)}</select></label></> : <label className="period-select"><Filter size={15} /><select value={period} onChange={(e) => setPeriod(e.target.value)}><option value="active">All statuses</option><option value="week">This week + overdue</option><option value="month">This month</option><option value="day">Today</option><option value="history">All History</option></select></label>}
+    <button className="button primary" onClick={onCreate}><Plus size={16} /> New Deliverable</button></div></div>;
 }
 
 interface ViewProps { snapshot: Snapshot; items: Deliverable[]; openTask: (id: string) => void; projectId: string; role: Role }
@@ -102,17 +111,48 @@ function Assignees({ snapshot, items, openTask }: ViewProps) {
 
 function Timeline({ snapshot, items, openTask }: ViewProps) {
   const dated = items.filter((i) => i.startDate || i.dueDate), base = parseISO(snapshot.serverDate), from = addDays(base, -14), total = 70;
-  return <Panel title="Delivery timeline" subtitle="70-day window centered on today"><div className="timeline-head"><span>Deliverable</span>{[0, 14, 28, 42, 56].map((d) => <b key={d}>{format(addDays(from, d), 'dd MMM')}</b>)}</div><div className="timeline-rows">{dated.slice(0, 80).map((item) => { const start = parseISO(item.startDate || item.dueDate!), end = parseISO(item.dueDate || item.startDate!), left = Math.max(0, differenceInCalendarDays(start, from) / total * 100), width = Math.max(1.5, (differenceInCalendarDays(end, start) + 1) / total * 100); return <button key={item._id} onClick={() => openTask(item._id)}><span>{item.title}</span><div><i style={{ left: `${left}%`, width: `${Math.min(100 - left, width)}%`, background: stageMeta[item.status].color }} /></div></button>; })}</div></Panel>;
+  return <Panel title="Delivery timeline" subtitle="70-day window centered on today"><div className="timeline-scroll"><div className="timeline-head"><span>Deliverable</span>{[0, 14, 28, 42, 56].map((d) => <b key={d}>{format(addDays(from, d), 'dd MMM')}</b>)}</div><div className="timeline-rows">{dated.slice(0, 80).map((item) => { const start = parseISO(item.startDate || item.dueDate!), end = parseISO(item.dueDate || item.startDate!), left = Math.max(0, differenceInCalendarDays(start, from) / total * 100), width = Math.max(1.5, (differenceInCalendarDays(end, start) + 1) / total * 100); return <button key={item._id} onClick={() => openTask(item._id)}><span>{item.title}</span><div><i style={{ left: `${left}%`, width: `${Math.min(100 - left, width)}%`, background: stageMeta[item.status].color }} /></div></button>; })}</div></div></Panel>;
 }
 
-function Calendar({ snapshot, items, openTask }: ViewProps) {
-  const groups = new Map<string, Deliverable[]>(); items.filter((i) => i.dueDate || i.plannedDeploymentDate).forEach((i) => { const date = i.plannedDeploymentDate && i.toBeDeployed ? i.plannedDeploymentDate : i.dueDate!; groups.set(date, [...(groups.get(date) || []), i]); });
-  return <div className="calendar-grid">{[...groups.entries()].sort(([a], [b]) => a.localeCompare(b)).slice(0, 42).map(([date, dayItems]) => <div className={`day-card ${date === snapshot.serverDate ? 'today' : ''}`} key={date}><div><strong>{format(parseISO(date), 'dd')}</strong><span>{format(parseISO(date), 'EEE · MMM')}</span></div>{dayItems.map((item) => <button key={item._id} onClick={() => openTask(item._id)} style={{ borderColor: stageMeta[item.status].color }}>{item.toBeDeployed && item.plannedDeploymentDate === date ? 'Deploy · ' : ''}{item.title}</button>)}</div>)}</div>;
+function calendarEventColor(activity: CalendarTaskActivity, date: string, today: string) {
+  if (activity.markers.includes('deployed')) return '#17865f';
+  if (activity.markers.includes('delivered')) return '#27a674';
+  if (activity.markers.includes('due') && !['done', 'deployed'].includes(activity.item.status)) return date < today ? '#dc4c4c' : '#e6a740';
+  return stageMeta[activity.item.status].color;
 }
 
-function Roster({ snapshot }: ViewProps) {
-  const days = Array.from({ length: 7 }, (_, i) => addDays(startOfWeek(parseISO(snapshot.serverDate), { weekStartsOn: 1 }), i));
-  return <div className="table-wrap roster"><table><thead><tr><th>Team member</th>{days.map((d) => <th key={String(d)}>{format(d, 'EEE')}<small>{format(d, 'dd MMM')}</small></th>)}</tr></thead><tbody>{snapshot.members.map((member) => <tr key={member._id}><td><strong>{member.name}</strong><small>{member.shiftId || 'General'}</small></td>{days.map((day) => { const weekday = (day.getDay() + 6) % 7, working = (member.workingDays || [0, 1, 2, 3, 4]).includes(weekday); return <td key={String(day)}><span className={working ? 'shift on' : 'shift'}>{working ? (member.shiftId || 'GEN').toUpperCase() : 'OFF'}</span></td>; })}</tr>)}</tbody></table></div>;
+export function Calendar({ snapshot, items, openTask, month }: ViewProps & { month: string }) {
+  const [selectedDate, setSelectedDate] = useState(snapshot.serverDate);
+  const activeDate = selectedDate.startsWith(month) ? selectedDate : `${month}-01`;
+  const dates = monthGridDates(month), selectedActivity = calendarActivityForDate(items, activeDate);
+  return <div className="calendar-workspace"><div className="calendar-main"><div className="calendar-weekdays">{['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => <span key={day}>{day}</span>)}</div><div className="calendar-grid">{dates.map((date) => {
+    const dayActivity = calendarActivityForDate(items, date), visible = dayActivity.slice(0, 3), outside = !date.startsWith(month);
+    return <div className={`day-card ${date === snapshot.serverDate ? 'today' : ''} ${date === activeDate ? 'selected' : ''} ${outside ? 'outside' : ''}`} key={date}>
+      <button aria-label={`Open ${date}`} className="day-heading" onClick={() => setSelectedDate(date)}><strong>{format(parseISO(date), 'd')}</strong><span>{date === snapshot.serverDate ? 'Today' : format(parseISO(date), 'MMM')}</span></button>
+      <div className="day-events">{visible.map((activity) => <button className={['done', 'deployed'].includes(activity.item.status) ? 'calendar-task finished' : 'calendar-task'} key={activity.item._id} onClick={() => openTask(activity.item._id)} style={{ '--event-color': calendarEventColor(activity, date, snapshot.serverDate) } as React.CSSProperties}><i />{activity.item.title}</button>)}{dayActivity.length > visible.length && <button className="more-events" onClick={() => setSelectedDate(date)}>+{dayActivity.length - visible.length} more</button>}</div>
+    </div>;
+  })}</div></div><aside className="calendar-day-panel"><header><span className="eyebrow">Selected date</span><h2>{format(parseISO(activeDate), 'EEEE, dd MMMM')}</h2><p>{selectedActivity.length} task{selectedActivity.length === 1 ? '' : 's'} active or reaching a milestone</p></header><div>{selectedActivity.map((activity) => <button key={activity.item._id} onClick={() => openTask(activity.item._id)}><i style={{ background: calendarEventColor(activity, activeDate, snapshot.serverDate) }} /><span className={['done', 'deployed'].includes(activity.item.status) ? 'finished' : ''}><strong>{activity.item.title}</strong><small>{activity.markers.length ? activity.markers.map((marker) => marker[0]!.toUpperCase() + marker.slice(1)).join(' · ') : 'Active timeline'} · {stageMeta[activity.item.status].label}</small></span><ArrowUpRight size={14} /></button>)}{!selectedActivity.length && <div className="empty-state compact"><CalendarDays />No task activity on this date.</div>}</div></aside></div>;
+}
+
+const rosterOptions: Array<{ value: RosterStatus; label: string }> = [
+  { value: 'general', label: 'General 09:00–18:00 IST' }, { value: 'night', label: 'Night 21:00–06:00 IST' }, { value: 'leave', label: 'Leave' }, { value: 'off', label: 'Off' }
+];
+
+export function Roster({ snapshot, projectId, selectedDate }: ViewProps & { selectedDate: string }) {
+  const call = useApi(), client = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: ({ memberId, date, status }: { memberId: string; date: string; status: RosterStatus }) => call(`/projects/${projectId}/roster/${memberId}/${date}`, { method: 'PUT', body: JSON.stringify({ status }) }),
+    onSuccess: () => client.invalidateQueries({ queryKey: ['snapshot', projectId] })
+  });
+  const days = Array.from({ length: 7 }, (_, index) => addDays(startOfWeek(parseISO(selectedDate), { weekStartsOn: 1 }), index));
+  return <div className="roster-stack"><div className="roster-summary"><span><i className="general" />General 09:00–18:00</span><span><i className="night" />Night 21:00–06:00</span><span><i className="leave" />Leave</span><span><i className="off" />Off</span><strong>IST · Monday–Sunday</strong></div>{mutation.error && <div className="error-banner">{mutation.error.message}</div>}<div className="table-wrap roster"><table><thead><tr><th>Team member</th>{days.map((day) => { const date = format(day, 'yyyy-MM-dd'); return <th className={date === snapshot.serverDate ? 'today' : ''} key={date}>{format(day, 'EEE')}<small>{format(day, 'dd MMM')}{date === snapshot.serverDate ? ' · Today' : ''}</small></th>; })}</tr></thead><tbody>{snapshot.members.map((member) => {
+    const editable = snapshot.access.role === 'admin' || snapshot.access.memberId === member._id;
+    return <tr key={member._id}><td><div className="roster-member"><span className="avatar mini" style={{ background: member.color }}>{initials(member.name)}</span><span><strong>{member.name}</strong><small>{member.email}</small></span></div></td>{days.map((day) => {
+      const date = format(day, 'yyyy-MM-dd'), pending = mutation.isPending && mutation.variables?.memberId === member._id && mutation.variables.date === date;
+      const current = pending ? mutation.variables!.status : rosterStatusFor(member, date, snapshot.rosterOverrides || [], snapshot.leaves || []);
+      return <td className={date === snapshot.serverDate ? 'today' : ''} key={date}><select aria-label={`${member.name} ${date} shift`} className={`roster-select ${current}`} value={current} disabled={!editable || mutation.isPending} onChange={(event) => mutation.mutate({ memberId: member._id, date, status: event.target.value as RosterStatus })}>{rosterOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></td>;
+    })}</tr>;
+  })}</tbody></table></div></div>;
 }
 
 function Team({ snapshot, items, projectId, role }: ViewProps) {

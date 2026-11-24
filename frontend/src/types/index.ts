@@ -4,8 +4,11 @@ export interface Project { _id: string; portfolioId: string; name: string; key?:
 export interface Member { _id: string; legacyId?: string; name: string; email: string; title?: string; department?: string; color?: string; role?: Role; workingDays?: number[]; shiftId?: string; allocationPercent?: number }
 export interface Tower { _id: string; legacyId?: string; name: string; color?: string }
 export interface Flag { _id: string; name: string; color: string }
-export interface Comment { _id: string; authorName: string; at: string; text: string }
+export interface Comment { _id: string; authorId?: string; authorName: string; at: string; text: string }
 export interface Worklog { _id: string; memberId: string; authorName: string; workDate: string; minutes: number; note: string; createdAt: string }
+export type RosterStatus = 'general' | 'night' | 'off' | 'leave';
+export interface RosterOverride { _id: string; memberId: string; date: string; shiftId: RosterStatus }
+export interface Leave { _id: string; memberId: string; type: string; startDate: string; endDate: string; note?: string; status?: string; source?: string }
 export interface Deliverable {
   _id: string; __v: number; legacyId?: string; title: string; description?: string; ticket?: string | null; towerId?: string; flagIds: string[]; primaryAssigneeId?: string;
   contributorIds: string[]; status: Status; priority: 'high' | 'medium' | 'low'; startDate?: string; dueDate?: string; completionDate?: string; deploymentDate?: string;
@@ -15,4 +18,4 @@ export interface Deliverable {
   dataQualityWarnings?: string[]; createdAt: string; updatedAt: string;
 }
 export interface Notification { _id: string; title: string; body: string; readAt?: string; entityId?: string; createdAt: string }
-export interface Snapshot { project: Project; towers: Tower[]; flags: Flag[]; members: Member[]; deliverables: Deliverable[]; leaves: any[]; activity: any[]; directory: any[]; notifications: Notification[]; access: { role: Role; memberId: string; memberName: string; memberEmail: string; adminVerified: boolean; sessionExpiresAt: number }; serverDate: string }
+export interface Snapshot { project: Project; towers: Tower[]; flags: Flag[]; members: Member[]; deliverables: Deliverable[]; leaves: Leave[]; rosterOverrides: RosterOverride[]; activity: any[]; directory: any[]; notifications: Notification[]; access: { role: Role; memberId: string; memberName: string; memberEmail: string; adminVerified: boolean; sessionExpiresAt: number }; serverDate: string }

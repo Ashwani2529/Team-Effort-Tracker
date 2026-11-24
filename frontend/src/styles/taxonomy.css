@@ -79,6 +79,22 @@
 .worklog-list p { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.5; white-space: pre-wrap; }
 .worklog-list article > span { position: absolute; top: 12px; right: 12px; color: var(--accent); font-size: 10px; font-weight: 750; }
 .worklog-list > .muted { margin: 0; padding: 16px; font-size: 10px; }
+.task-detail-actions { display: flex; justify-content: flex-end; gap: 6px; padding-right: 2px; }
+.danger-button { color: var(--red); border-color: color-mix(in srgb, var(--red) 30%, var(--border)); }
+.entry-actions { display: flex; align-items: center; gap: 3px; }
+.entry-actions button { width: 25px; height: 25px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 6px; color: var(--faint); background: transparent; }
+.entry-actions button:hover { color: var(--accent); background: var(--surface-3); }
+.entry-actions button:last-child:hover { color: var(--red); background: var(--red-soft); }
+.worklog-list article > .entry-actions { position: absolute; right: 8px; bottom: 6px; }
+.worklog-list article.entry-editor { padding: 12px; }
+.worklog-list article.entry-editor > .field { display: grid; }
+.worklog-list .worklog-edit-grid { display: grid; grid-template-columns: 1fr 110px; gap: 8px; }
+.entry-editor-actions { display: flex; justify-content: flex-end; gap: 6px; }
+.comments .comment-content { min-width: 0; }
+.comment-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.comment-heading .entry-actions { flex: 0 0 auto; }
+.comment-editor { display: grid; gap: 7px; margin-top: 7px; }
+.comment-editor textarea { width: 100%; min-height: 80px; resize: vertical; }
 
 @media (max-width: 820px) {
   .taxonomy-grid { grid-template-columns: 1fr; }

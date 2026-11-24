@@ -1,0 +1,70 @@
+.date-select { position: relative; display: flex; align-items: center; }
+.date-select svg { position: absolute; left: 10px; color: var(--muted); pointer-events: none; }
+.date-select input { min-height: 36px; padding-left: 32px; color: var(--text); background: var(--surface); font-size: 12px; }
+
+.calendar-workspace { display: grid; grid-template-columns: minmax(0, 1fr) 310px; gap: 14px; align-items: start; }
+.calendar-main { min-width: 0; overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.calendar-weekdays { min-width: 840px; display: grid; grid-template-columns: repeat(7, minmax(120px, 1fr)); background: var(--surface-2); border-bottom: 1px solid var(--border); }
+.calendar-weekdays span { height: 34px; display: grid; place-items: center; color: var(--muted); font-size: 9px; font-weight: 750; text-transform: uppercase; letter-spacing: .06em; }
+.calendar-main .calendar-grid { min-width: 840px; display: grid; grid-template-columns: repeat(7, minmax(120px, 1fr)); gap: 0; overflow: visible; }
+.calendar-main .day-card { min-width: 0; min-height: 142px; padding: 7px; border: 0; border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); border-radius: 0; background: var(--surface); }
+.calendar-main .day-card:nth-child(7n) { border-right: 0; }
+.calendar-main .day-card.outside { background: color-mix(in srgb, var(--surface-2) 52%, var(--surface)); opacity: .56; }
+.calendar-main .day-card.today { box-shadow: inset 0 0 0 1px var(--accent); }
+.calendar-main .day-card.selected { background: color-mix(in srgb, var(--accent) 5%, var(--surface)); }
+.calendar-main .day-card > .day-heading { width: 100%; min-height: 29px; margin: 0 0 5px; padding: 0 2px; display: flex; align-items: center; justify-content: space-between; border: 0; background: transparent; text-align: left; font-size: inherit; line-height: normal; }
+.day-heading strong { width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%; color: var(--text); font-size: 11px; }
+.today .day-heading strong { color: white; background: var(--accent); }
+.day-heading span { color: var(--faint); font-size: 8px; }
+.calendar-main .day-card > .day-events { display: grid; align-items: stretch; gap: 3px; margin: 0; }
+.calendar-task { width: 100%; min-width: 0; min-height: 24px; margin: 0; padding: 4px 5px; display: grid; grid-template-columns: 5px minmax(0, 1fr); gap: 5px; align-items: center; border: 1px solid color-mix(in srgb, var(--event-color) 25%, var(--border)); border-radius: 5px; color: var(--text); background: color-mix(in srgb, var(--event-color) 10%, var(--surface)); text-align: left; font-size: 8px; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.calendar-task i { width: 5px; height: 5px; border-radius: 50%; background: var(--event-color); }
+.calendar-task.finished { color: var(--muted); text-decoration: line-through; }
+.more-events { min-height: 21px; padding: 2px 5px; border: 0; color: var(--accent); background: transparent; text-align: left; font-size: 8px; font-weight: 700; }
+.calendar-day-panel { position: sticky; top: 76px; overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.calendar-day-panel > header { padding: 16px; border-bottom: 1px solid var(--border); background: var(--surface-2); }
+.calendar-day-panel h2 { margin: 6px 0 4px; font-size: 14px; }
+.calendar-day-panel header p { margin: 0; color: var(--muted); font-size: 9px; line-height: 1.45; }
+.calendar-day-panel > div { max-height: 620px; overflow: auto; padding: 6px; }
+.calendar-day-panel > div > button { width: 100%; min-height: 52px; padding: 9px 8px; display: grid; grid-template-columns: 7px minmax(0, 1fr) auto; gap: 8px; align-items: center; border: 0; border-bottom: 1px solid var(--border); color: var(--text); background: transparent; text-align: left; }
+.calendar-day-panel > div > button:hover { background: var(--surface-2); }
+.calendar-day-panel > div > button > i { width: 7px; height: 7px; border-radius: 50%; }
+.calendar-day-panel > div > button > span { min-width: 0; display: grid; gap: 4px; }
+.calendar-day-panel strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; }
+.calendar-day-panel small { color: var(--muted); font-size: 8px; }
+.calendar-day-panel .finished strong { text-decoration: line-through; }
+
+.roster-stack { display: grid; gap: 10px; }
+.roster-summary { min-height: 39px; padding: 7px 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 13px; border: 1px solid var(--border); border-radius: 9px; color: var(--muted); background: var(--surface); font-size: 9px; }
+.roster-summary span { display: flex; align-items: center; gap: 5px; }
+.roster-summary i { width: 7px; height: 7px; border-radius: 2px; background: var(--accent); }
+.roster-summary i.night { background: #8b5cf6; }
+.roster-summary i.leave { background: #e6a740; }
+.roster-summary i.off { background: #77808f; }
+.roster-summary strong { margin-left: auto; color: var(--faint); font-size: 9px; }
+.roster table { min-width: 1420px; }
+.roster th { text-align: center; }
+.roster th:first-child { position: sticky; left: 0; z-index: 3; text-align: left; }
+.roster td:first-child { position: sticky; left: 0; z-index: 2; min-width: 245px; background: var(--surface); }
+.roster tr:hover td:first-child { background: var(--surface-2); }
+.roster th.today, .roster td.today { background: color-mix(in srgb, var(--accent) 7%, var(--surface)); }
+.roster-member { display: flex; align-items: center; gap: 8px; }
+.roster-member > span:last-child { min-width: 0; display: grid; gap: 2px; }
+.roster-member strong { color: var(--text); font-size: 11px; }
+.roster-member small { max-width: 175px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--faint); }
+.roster-select { width: 100%; min-width: 154px; min-height: 36px; padding: 0 28px 0 10px; border-left: 5px solid var(--accent); background: var(--surface-2); font-size: 10px; }
+.roster-select.night { border-left-color: #8b5cf6; }
+.roster-select.leave { border-left-color: #e6a740; }
+.roster-select.off { border-left-color: #77808f; color: var(--muted); }
+.roster-select:disabled { opacity: .7; cursor: not-allowed; }
+
+@media (max-width: 1100px) {
+  .calendar-workspace { grid-template-columns: 1fr; }
+  .calendar-day-panel { position: static; }
+}
+
+@media (max-width: 560px) {
+  .date-select, .date-select input { width: 100%; }
+  .calendar-workspace { gap: 10px; }
+  .roster-summary strong { width: 100%; margin-left: 0; }
+}
