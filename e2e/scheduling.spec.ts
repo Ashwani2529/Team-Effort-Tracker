@@ -118,3 +118,20 @@ test('contains every member workspace view and the project landing on a phone', 
     expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth), route).toBeLessThanOrEqual(1);
   }
 });
+
+test('preserves project navigation in browser back history', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('link', { name: /Demo Project/ }).click();
+  await expect(page).toHaveURL('/p/project-1/overview');
+  await expect(page.getByRole('heading', { name: 'Overview', exact: true })).toBeVisible();
+
+  await page.getByRole('link', { name: 'Calendar', exact: true }).click();
+  await expect(page).toHaveURL('/p/project-1/calendar');
+  await page.goBack();
+  await expect(page).toHaveURL('/p/project-1/overview');
+  await expect(page.getByRole('heading', { name: 'Overview', exact: true })).toBeVisible();
+
+  await page.goBack();
+  await expect(page).toHaveURL('/');
+  await expect(page.getByRole('heading', { name: 'Choose a project' })).toBeVisible();
+});

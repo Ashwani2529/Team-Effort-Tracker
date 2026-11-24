@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Navigate, Route, Routes, useNavigate } from 'react-router-dom';
+import { Link, Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import { ArrowRight, FolderKanban, LoaderCircle, LockKeyhole, Plus } from 'lucide-react';
 import { useApi } from '../hooks/use-api';
 import type { PublicProject } from '../types';
@@ -22,7 +22,7 @@ export default function App() {
 function Landing({ projects }: { projects: PublicProject[] }) {
   const [creating, setCreating] = useState(projects.length === 0);
   return <div className="auth-page landing"><div className="brand-mark">E</div><div className="landing-card"><div className="landing-head"><span className="eyebrow">Effort Tracker</span><h1>Choose a project</h1><p>Open a delivery workspace with your registered email and its Team password.</p></div>
-    <div className="project-list">{projects.map((project) => <a key={project._id} href={'/p/' + project._id + '/overview'}><div className="project-icon"><FolderKanban size={19} /></div><div><strong>{project.name}</strong><span>{project.portfolioName}{project.key ? ' · ' + project.key : ''}</span></div><ArrowRight size={16} /></a>)}{!projects.length && !creating && <p className="muted">No projects have been created yet.</p>}</div>
+    <div className="project-list">{projects.map((project) => <Link key={project._id} to={'/p/' + project._id + '/overview'}><div className="project-icon"><FolderKanban size={19} /></div><div><strong>{project.name}</strong><span>{project.portfolioName}{project.key ? ' · ' + project.key : ''}</span></div><ArrowRight size={16} /></Link>)}{!projects.length && !creating && <p className="muted">No projects have been created yet.</p>}</div>
     {creating ? <CreateProject onCancel={projects.length ? () => setCreating(false) : undefined} /> : <button className="button primary" onClick={() => setCreating(true)}><Plus size={16} /> New project</button>}
   </div></div>;
 }
