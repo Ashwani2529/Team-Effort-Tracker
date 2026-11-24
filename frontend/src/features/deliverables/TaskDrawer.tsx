@@ -95,12 +95,12 @@ function TaskDetails({ item, snapshot }: { item: Deliverable; snapshot: Snapshot
       <div className="task-path"><span>{tower?.name || 'No tower'}</span><i>/</i><code>{item.ticket || 'No ticket'}</code></div>
       <h1>{item.title}</h1><p>{item.description || 'No additional description was provided.'}</p>
       <div className="detail-controls">
-        <select value={item.status} disabled={status.isPending} onChange={(event) => status.mutate(event.target.value as Status)}>{STATUSES.map((value) => <option key={value} value={value}>{labels[value]}</option>)}</select>
+        <select value={item.status} disabled={status.isPending || updateFlags.isPending} onChange={(event) => status.mutate(event.target.value as Status)}>{STATUSES.map((value) => <option key={value} value={value}>{labels[value]}</option>)}</select>
         <span className={`priority ${item.priority}`}>{item.priority} priority</span>
         {item.blocked && <span className="chip danger"><AlertTriangle size={13} /> Blocked</span>}
       </div>
       {status.error && <small className="field-error">{status.error.message}</small>}
-      <div className="task-tags"><span>Tags</span><TagPicker flags={snapshot.flags} selected={item.flagIds || []} disabled={updateFlags.isPending} onChange={(flagIds) => updateFlags.mutate(flagIds)} />{updateFlags.error && <small className="field-error">{updateFlags.error.message}</small>}</div>
+      <div className="task-tags"><span>Tags</span><TagPicker flags={snapshot.flags} selected={item.flagIds || []} disabled={updateFlags.isPending || status.isPending} onChange={(flagIds) => updateFlags.mutate(flagIds)} />{updateFlags.error && <small className="field-error">{updateFlags.error.message}</small>}</div>
     </div>
     <div className="drawer-tabs">
       <button className={tab === 'details' ? 'active' : ''} onClick={() => setTab('details')}><ClipboardList size={15} /> Details</button>

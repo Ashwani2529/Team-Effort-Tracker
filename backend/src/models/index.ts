@@ -43,7 +43,7 @@ deliverableSchema.index({ projectId: 1, sourceSystem: 1, plannerId: 1 }, { uniqu
 deliverableSchema.index({ projectId: 1, status: 1, dueDate: 1 });
 export const Deliverable: any = models.Deliverable || model('Deliverable', deliverableSchema);
 
-export const Worklog = scopedModel('Worklog', { deliverableId: { type: Schema.Types.ObjectId, required: true }, memberId: { type: Schema.Types.ObjectId, required: true }, authorName: { type: String, required: true }, workDate: String, minutes: Number, note: String, source: String, deletedAt: Date });
+export const Worklog = scopedModel('Worklog', { deliverableId: { type: Schema.Types.ObjectId, required: true }, memberId: { type: Schema.Types.ObjectId, required: true }, authorName: { type: String, required: true }, workDate: String, minutes: Number, note: String, source: String, deletedAt: Date }, [[{ projectId: 1, deliverableId: 1, createdAt: -1 }, {}]]);
 export const TimerSession = scopedModel('TimerSession', { deliverableId: Schema.Types.ObjectId, subtaskId: Schema.Types.ObjectId, userId: Schema.Types.ObjectId, startedAt: Date, pausedAt: Date, stoppedAt: Date, elapsedSeconds: Number, state: String });
 export const Attachment = scopedModel('Attachment', { deliverableId: Schema.Types.ObjectId, fileName: String, storageKey: String, mimeType: String, size: Number, uploadedBy: Schema.Types.ObjectId, deletedAt: Date });
 export const AuditEvent = scopedModel('AuditEvent', { actorMode: { type: String, enum: ['team', 'admin'] }, action: String, entityType: String, entityId: String, before: Schema.Types.Mixed, after: Schema.Types.Mixed, metadata: Schema.Types.Mixed }, [[{ projectId: 1, createdAt: -1 }, {}]]);

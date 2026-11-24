@@ -8,7 +8,7 @@ The legacy source contained five personal roles. The approved rebuild intentiona
 
 Stages are `backlog`, `todo`, `doing`, `review`, `done` (Delivered), and `deployed`. Delivered and Deployed are never collapsed or hidden from the default board. New items require title, tower, stage, priority, primary assignee, ticket or `N/A`, start, due, and a positive deliverable estimate. Delivered/Deployed require completion; Deployed also requires deployment. Blocked requires a reason; “To be Deployed” requires a plan date.
 
-Start cannot follow due; completion cannot precede start or be future-dated; deployment cannot precede completion. Subtasks require titles. Legacy records are exempt from required-field fabrication and receive data-quality warnings.
+Start cannot follow due; completion cannot precede start or be future-dated; deployment cannot precede completion. The legacy source required subtask titles, but subtasks are no longer part of the active product. Legacy records are exempt from required-field fabrication and receive data-quality warnings.
 
 `setStatus` appends history. First entry into Delivered/Deployed sets the IST completion date only if absent. Deployment is separate. Returning to an open stage cleared derived completion/deployment in the old app; the rebuild records the transition and retains audit evidence. Completion corrections require Team Lead or higher. Moving active while dependencies remain unfinished is allowed with a warning. Dependency cycles are rejected.
 

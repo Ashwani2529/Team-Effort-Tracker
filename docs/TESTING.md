@@ -24,7 +24,7 @@ Current deterministic automated coverage includes:
 - extraction of the real embedded dataset with all nine acceptance counts and SHA-256 shape validation;
 - password-based frontend project landing.
 
-Backend API integration tests requiring MongoDB, live Socket.IO tests, import fixtures, and critical browser flows remain to be added. `mongodb-memory-server` is installed for isolated suites, but its binary may require network access on first use. Never place real employee/task data in fixtures or snapshots.
+The member-bound project API flow has an isolated MongoDB integration suite covering creation, admission, remembered Admin switching, identity-aware comments/worklogs and a Delivered transition. It is skipped by default because `mongodb-memory-server` may need a first-run binary download; run it with `RUN_MONGO_INTEGRATION=1`. Live Socket.IO, import fixtures, and broader browser flows remain to be added. Never place real employee/task data in fixtures or snapshots.
 
 E2E uses Playwright and starts a production preview. The smoke test verifies the password-based project landing. Full database-backed Team/Admin flows require an isolated MongoDB test database.
 

@@ -7,9 +7,9 @@ Base path: /api/v1. Project routes use an HTTP-only signed project-session cooki
 | GET /health | public | Process health |
 | GET /config | public | Non-secret access configuration |
 | GET /projects | public | Project names and portfolio labels |
-| POST /projects | application password | Create a project with Team/Admin passwords |
-| POST /projects/:projectId/unlock | Team password | Start Team session |
-| POST /projects/:projectId/admin-mode | active session + Admin password | Upgrade to Admin mode |
+| POST /projects | application password | Create a project, first member and Team/Admin passwords |
+| POST /projects/:projectId/unlock | registered email + Team password | Start 30-day member-bound Team session |
+| POST /projects/:projectId/admin-mode | active session + first-use Admin password | Enter Admin mode; reuse remembered grant on later toggles |
 | POST /projects/:projectId/team-mode | active session | Downgrade to Team mode |
 | POST /projects/:projectId/lock | active session | Clear session |
 | PATCH /projects/:projectId/passwords | Admin | Change passwords and invalidate earlier sessions |

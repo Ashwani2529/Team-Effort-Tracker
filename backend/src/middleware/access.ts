@@ -9,7 +9,7 @@ export async function projectAccess(req: Request, res: Response, next: NextFunct
     if (!project || project.archivedAt) { res.status(404).json({ error: 'project_not_found' }); return; }
     const session = sessionFromRequest(req);
     if (!session || session.projectId !== String(project._id) || session.passwordVersion !== project.passwordVersion) {
-      res.status(401).json({ error: 'project_password_required', message: 'Enter the shared project password to continue.' }); return;
+      res.status(401).json({ error: 'project_password_required', message: 'Enter your registered email and the shared Team password to continue.' }); return;
     }
     const member = await Member.findOne({ _id: session.memberId, projectId: project._id, archivedAt: null }).lean();
     if (!member) { res.status(403).json({ error: 'member_not_added', message: 'You are not an active member of this project. Ask an Admin to add your email.' }); return; }
