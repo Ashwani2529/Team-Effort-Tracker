@@ -1,0 +1,3 @@
+{
+  "extends": "../tsconfig.base.json", "compilerOptions": { "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.node.tsbuildinfo", "module": "ESNext", "moduleResolution": "Bundler", "allowImportingTsExtensions": true, "allowJs": true, "checkJs": true, "noEmit": true, "types": ["node"] }, "include": ["vite.config.mjs", "vitest.config.mjs"]
+}

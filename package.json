@@ -1,0 +1,24 @@
+{
+  "name": "effort-tracker",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": ["packages/*", "backend", "frontend"],
+  "scripts": {
+    "predev": "npm run build -w @effort-tracker/shared",
+    "dev": "concurrently -n api,web -c cyan,magenta \"npm run dev -w backend\" \"npm run dev -w frontend\"",
+    "build": "npm run build -w @effort-tracker/shared && npm run build -w backend && npm run build -w frontend",
+    "lint": "npm run lint -w @effort-tracker/shared && npm run lint -w backend && npm run lint -w frontend",
+    "typecheck": "npm run typecheck -w @effort-tracker/shared && npm run typecheck -w backend && npm run typecheck -w frontend",
+    "pretest": "npm run build -w @effort-tracker/shared",
+    "test": "npm run test -w @effort-tracker/shared && npm run test -w backend && npm run test -w frontend",
+    "test:e2e": "playwright test",
+    "seed:legacy": "npm run seed:legacy -w backend --",
+    "verify:legacy": "npm run verify:legacy -w backend"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.57.0",
+    "concurrently": "^9.2.1",
+    "typescript": "^5.9.3"
+  },
+  "engines": { "node": ">=22.12", "npm": ">=10" }
+}
