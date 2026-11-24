@@ -1,6 +1,6 @@
 import { createHash, createHmac, randomBytes, scrypt as scryptCallback, timingSafeEqual } from 'node:crypto';
 import { promisify } from 'node:util';
-import type { Request, Response } from 'express';
+import type { CookieOptions, Request, Response } from 'express';
 import type { Role } from '@effort-tracker/shared';
 import { env } from '../config/env.js';
 
@@ -63,13 +63,18 @@ export function cookieValue(header: string | undefined, name = SESSION_COOKIE): 
 
 export function sessionFromRequest(req: Request): ProjectSession | null { return verifySessionToken(cookieValue(req.headers.cookie)); }
 
+export function projectSessionCookieOptions(nodeEnv = env.NODE_ENV, frontendOrigin = env.FRONTEND_ORIGIN): CookieOptions {
+  const crossSiteHttps = nodeEnv === 'production' || frontendOrigin.split(',').some((origin) => origin.trim().startsWith('https://'));
+  return { httpOnly: true, sameSite: crossSiteHttps ? 'none' : 'lax', secure: crossSiteHttps, path: '/' };
+}
+
 export function setProjectSession(res: Response, session: Omit<ProjectSession, 'expiresAt'> & { expiresAt?: number }): void {
   const configuredMaxAge = env.SESSION_TTL_HOURS * 60 * 60 * 1000;
   const expiresAt = session.expiresAt ?? Date.now() + configuredMaxAge;
   const maxAge = Math.max(0, expiresAt - Date.now());
-  res.cookie(SESSION_COOKIE, createSessionToken({ ...session, expiresAt }), { httpOnly: true, sameSite: 'strict', secure: env.NODE_ENV === 'production', maxAge, path: '/' });
+  res.cookie(SESSION_COOKIE, createSessionToken({ ...session, expiresAt }), { ...projectSessionCookieOptions(), maxAge });
 }
 
 export function clearProjectSession(res: Response): void {
-  res.clearCookie(SESSION_COOKIE, { httpOnly: true, sameSite: 'strict', secure: env.NODE_ENV === 'production', path: '/' });
+  res.clearCookie(SESSION_COOKIE, projectSessionCookieOptions());
 }

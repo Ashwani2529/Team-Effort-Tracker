@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createSessionToken, hashPassword, setProjectSession, verifyPassword, verifySessionToken } from '../middleware/auth.js';
+import { createSessionToken, hashPassword, projectSessionCookieOptions, setProjectSession, verifyPassword, verifySessionToken } from '../middleware/auth.js';
 
 describe('project password sessions', () => {
   it('hashes and verifies project passwords without retaining plaintext', async () => {
@@ -26,5 +26,12 @@ describe('project password sessions', () => {
     const response = { cookie: (_name: string, value: string) => { token = value; } } as any;
     setProjectSession(response, { projectId: 'project-1', memberId: 'member-1', role: 'team', adminVerified: true, passwordVersion: 1, expiresAt });
     expect(verifySessionToken(token)?.expiresAt).toBe(expiresAt);
+  });
+
+  it('uses a secure cross-site cookie for production or an HTTPS frontend and a local-safe cookie otherwise', () => {
+    expect(projectSessionCookieOptions('production')).toMatchObject({ httpOnly: true, sameSite: 'none', secure: true, path: '/' });
+    expect(projectSessionCookieOptions('development', 'https://effort-tracker-board.vercel.app')).toMatchObject({ httpOnly: true, sameSite: 'none', secure: true, path: '/' });
+    expect(projectSessionCookieOptions('development', 'http://localhost:5173')).toMatchObject({ httpOnly: true, sameSite: 'lax', secure: false, path: '/' });
+    expect(projectSessionCookieOptions('test', 'http://localhost:5173')).toMatchObject({ httpOnly: true, sameSite: 'lax', secure: false, path: '/' });
   });
 });
