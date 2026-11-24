@@ -3,9 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "scripts": {
+"scripts": {
     "dev": "vite --config vite.config.mjs --configLoader native",
-    "build": "tsc -b && vite build --config vite.config.mjs --configLoader native",
+    "build": "npm --workspace=@effort-tracker/shared run build && tsc -b && vite build --config vite.config.mjs --configLoader native",
     "preview": "vite preview --config vite.config.mjs --configLoader native",
     "typecheck": "tsc -b --pretty false",
     "lint": "eslint src --max-warnings=0",
