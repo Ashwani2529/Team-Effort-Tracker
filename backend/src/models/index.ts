@@ -20,6 +20,20 @@ const projectSchema = new Schema({ organizationId: { type: Schema.Types.ObjectId
 projectSchema.index({ portfolioId: 1, name: 1 }, { unique: true });
 export const Project: any = models.Project || model('Project', projectSchema);
 
+const projectSessionSchema = new Schema({
+  tokenHash: { type: String, required: true, unique: true },
+  projectId: { type: Schema.Types.ObjectId, required: true, index: true },
+  memberId: { type: Schema.Types.ObjectId, required: true, index: true },
+  role: { type: String, enum: ['team', 'admin'], required: true },
+  adminVerified: { type: Boolean, required: true, default: false },
+  passwordVersion: { type: Number, required: true },
+  expiresAt: { type: Date, required: true },
+  revokedAt: Date
+}, timestamps);
+projectSessionSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+projectSessionSchema.index({ projectId: 1, memberId: 1, revokedAt: 1 });
+export const StoredProjectSession: any = models.StoredProjectSession || model('StoredProjectSession', projectSessionSchema);
+
 export const Tower = scopedModel('Tower', { legacyId: String, name: { type: String, required: true }, color: String, archivedAt: Date }, [[{ projectId: 1, name: 1 }, { unique: true }]]);
 export const Flag = scopedModel('Flag', { name: { type: String, required: true }, color: { type: String, required: true }, archivedAt: Date }, [[{ projectId: 1, name: 1 }, { unique: true }]]);
 export const Member = scopedModel('Member', { legacyId: String, name: { type: String, required: true }, email: { type: String, required: true, lowercase: true }, title: String, department: String, color: String, workingDays: [Number], shiftId: String, allocationPercent: Number, rotates: Boolean, archivedAt: Date }, [[{ projectId: 1, legacyId: 1 }, { unique: true, partialFilterExpression: { legacyId: { $type: 'string' } } }], [{ projectId: 1, email: 1 }, { unique: true }]]);

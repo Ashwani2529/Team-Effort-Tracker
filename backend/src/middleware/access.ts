@@ -7,7 +7,7 @@ export async function projectAccess(req: Request, res: Response, next: NextFunct
   try {
     const project = await Project.findById(req.params.projectId).lean();
     if (!project || project.archivedAt) { res.status(404).json({ error: 'project_not_found' }); return; }
-    const session = sessionFromRequest(req);
+    const session = await sessionFromRequest(req);
     if (!session || session.projectId !== String(project._id) || session.passwordVersion !== project.passwordVersion) {
       res.status(401).json({ error: 'project_password_required', message: 'Enter your registered email and the shared Team password to continue.' }); return;
     }

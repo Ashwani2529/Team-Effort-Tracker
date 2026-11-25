@@ -5,7 +5,7 @@ import { cookieValue, verifySessionToken } from '../middleware/auth.js';
 export function configureSockets(io: Server): void {
   io.use(async (socket, next) => {
     try {
-      const session = verifySessionToken(cookieValue(socket.handshake.headers.cookie));
+      const session = await verifySessionToken(cookieValue(socket.handshake.headers.cookie));
       if (!session) throw new Error('Project password required');
       const project = await Project.findById(session.projectId).lean();
       if (!project || project.archivedAt || project.passwordVersion !== session.passwordVersion) throw new Error('Project session expired');

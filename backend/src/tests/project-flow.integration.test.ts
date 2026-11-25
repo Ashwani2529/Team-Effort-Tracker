@@ -3,6 +3,7 @@ import { MongoMemoryServer } from 'mongodb-memory-server';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { app } from '../app.js';
 import { connectDatabase, disconnectDatabase } from '../config/database.js';
+import { StoredProjectSession } from '../models/index.js';
 
 const integration = process.env.RUN_MONGO_INTEGRATION === '1' ? describe : describe.skip;
 
@@ -45,6 +46,9 @@ integration('member-bound project flow', () => {
     const member = request.agent(app);
     await member.post(`/api/v1/projects/${projectId}/unlock`).send({ email: 'missing@example.com', password: 'team-password-123' }).expect(403);
     await member.post(`/api/v1/projects/${projectId}/unlock`).send({ email: 'taylor@example.com', password: 'team-password-123' }).expect(200);
+    const persistedSession = await StoredProjectSession.findOne({ projectId, memberId: (await member.get(`/api/v1/projects/${projectId}/snapshot`).expect(200)).body.access.memberId, revokedAt: null }).lean();
+    expect(persistedSession).toBeTruthy();
+    expect(new Date(persistedSession.expiresAt).getTime()).toBeGreaterThan(Date.now() + 29 * 24 * 60 * 60 * 1000);
     await member.post(`/api/v1/projects/${projectId}/admin-mode`).send({}).expect(401);
     await member.post(`/api/v1/projects/${projectId}/admin-mode`).send({ password: 'admin-password-123' }).expect(200);
     await member.post(`/api/v1/projects/${projectId}/team-mode`).expect(200);

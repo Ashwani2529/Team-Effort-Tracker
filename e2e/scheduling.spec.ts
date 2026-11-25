@@ -3,14 +3,20 @@ import { expect, test } from '@playwright/test';
 const task = {
   _id: 'task-1', __v: 0, title: 'Calendar delivery', description: 'Release activity', ticket: 'CAL-1', towerId: 'tower-1', flagIds: [], primaryAssigneeId: 'member-1', contributorIds: [],
   status: 'deployed', priority: 'high', startDate: '2026-11-23', dueDate: '2026-11-25', completionDate: '2026-11-26', deploymentDate: '2026-11-27',
-  estimatedHours: 8, worklogMinutes: 0, comments: [], worklogs: [], statusHistory: [], createdAt: '2026-11-20', updatedAt: '2026-11-27'
+  estimatedHours: 8, worklogMinutes: 120, comments: [], worklogs: [{ _id: 'worklog-1', memberId: 'member-1', authorName: 'Taylor Member', workDate: '2026-11-24', minutes: 120, note: 'Verified delivery work', createdAt: '2026-11-24' }], statusHistory: [], createdAt: '2026-11-20', updatedAt: '2026-11-27'
+};
+
+const secondTask = {
+  _id: 'task-2', __v: 0, title: 'Mobile API migration', description: 'Contains the FooBar substring for filtering', ticket: 'API-2', towerId: 'tower-2', flagIds: ['flag-1'], primaryAssigneeId: 'member-2', contributorIds: [],
+  status: 'doing', priority: 'medium', startDate: '2026-12-08', dueDate: '2026-12-10', estimatedHours: 12, worklogMinutes: 0,
+  comments: [], worklogs: [], statusHistory: [], createdAt: '2026-11-22', updatedAt: '2026-11-24'
 };
 
 const snapshot = {
   project: { _id: 'project-1', portfolioId: 'portfolio-1', name: 'Demo Project' },
-  towers: [{ _id: 'tower-1', name: 'Platform', color: '#5b7cfa' }], flags: [],
+  towers: [{ _id: 'tower-1', name: 'Platform', color: '#5b7cfa' }, { _id: 'tower-2', name: 'Applications', color: '#8b5cf6' }], flags: [{ _id: 'flag-1', name: 'Release', color: '#e6a740' }],
   members: [{ _id: 'member-1', name: 'Taylor Member', email: 'taylor@example.com', color: '#17865f' }, { _id: 'member-2', name: 'Other Member', email: 'other@example.com', color: '#8b5cf6' }],
-  deliverables: [task], leaves: [], rosterOverrides: [], activity: [], directory: [], notifications: [],
+  deliverables: [task, secondTask], leaves: [], rosterOverrides: [], activity: [], directory: [], notifications: [],
   access: { role: 'team', memberId: 'member-1', memberName: 'Taylor Member', memberEmail: 'taylor@example.com', adminVerified: false, sessionExpiresAt: Date.now() + 60_000 }, serverDate: '2026-11-24'
 };
 
@@ -134,4 +140,45 @@ test('preserves project navigation in browser back history', async ({ page }) =>
   await page.goBack();
   await expect(page).toHaveURL('/');
   await expect(page.getByRole('heading', { name: 'Choose a project' })).toBeVisible();
+});
+
+test('filters the board by status, person and due date', async ({ page }) => {
+  await page.goto('/p/project-1/board');
+  await page.getByLabel('Board status filter').selectOption('doing');
+  await page.getByLabel('Board person filter').selectOption('member-2');
+  await page.getByLabel('Board due date filter').fill('2026-12-10');
+  await expect(page.locator('.board-column')).toHaveCount(1);
+  await expect(page.locator('.task-card')).toHaveCount(1);
+  await expect(page.locator('.task-card')).toContainText('Mobile API migration');
+  await expect(page.getByText('1 matching task')).toBeVisible();
+});
+
+test('filters the list by substring, tower, tag, member and due date', async ({ page }) => {
+  await page.goto('/p/project-1/list');
+  await page.getByLabel('List text filter').fill('oObAr');
+  await page.getByLabel('List tower filter').selectOption('tower-2');
+  await page.getByLabel('List tag filter').selectOption('flag-1');
+  await page.getByLabel('List member filter').selectOption('member-2');
+  await page.getByLabel('List due date filter').fill('2026-12-10');
+  await expect(page.getByRole('button', { name: /Mobile API migration/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Calendar delivery/ })).toHaveCount(0);
+  await expect(page.getByText('1 matching item')).toBeVisible();
+});
+
+test('opens the same member statistics dialog from Team and Assignees', async ({ page }) => {
+  await page.goto('/p/project-1/team');
+  await page.locator('.team-card').filter({ hasText: 'Taylor Member' }).click();
+  let dialog = page.getByRole('dialog', { name: 'Taylor Member' });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText('1');
+  await expect(dialog).toContainText('2.0h');
+  await expect(dialog).toContainText('Deployed');
+  await dialog.getByRole('button', { name: 'Close member statistics' }).click();
+
+  await page.goto('/p/project-1/assignees');
+  await page.locator('.person-card').filter({ hasText: 'Taylor Member' }).click();
+  dialog = page.getByRole('dialog', { name: 'Taylor Member' });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText('Verified work hours');
+  await expect(dialog).toContainText('Upcoming deadlines');
 });

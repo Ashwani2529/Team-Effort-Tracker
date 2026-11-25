@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { rateLimit } from 'express-rate-limit';
 import { z } from 'zod';
 import { deliverableInputSchema } from '@effort-tracker/shared';
-import { clearProjectSession, hashPassword, sessionFromRequest, setProjectSession, verifyPassword, verifySetupPassword } from '../middleware/auth.js';
+import { clearProjectSession, hashPassword, sessionFromRequest, setProjectSession, updateProjectSession, verifyPassword, verifySetupPassword } from '../middleware/auth.js';
 import { projectAccess, requireCapability } from '../middleware/access.js';
 import { AuditEvent, Deliverable, DirectoryContact, Flag, Leave, LegacyActivity, Member, Notification, Organization, Portfolio, Project, RosterOverride, Tower, Worklog } from '../models/index.js';
 
@@ -43,7 +43,7 @@ router.post('/projects', passwordLimit, async (req, res) => {
   const [teamPasswordHash, adminPasswordHash] = await Promise.all([hashPassword(body.teamPassword), hashPassword(body.adminPassword)]);
   const project = await Project.create({ organizationId: organization._id, portfolioId: portfolio._id, name: body.name, key: body.key, startDate: body.startDate, endDate: body.endDate, teamPasswordHash, adminPasswordHash, passwordVersion: 1, passwordUpdatedAt: new Date(), settings: { timeZone: 'Asia/Kolkata' } });
   const creator = await Member.create({ organizationId: organization._id, portfolioId: portfolio._id, projectId: project._id, name: body.creatorName, email: body.creatorEmail, workingDays: [0, 1, 2, 3, 4], shiftId: 'general', color: '#6d5ce7', allocationPercent: 100 });
-  setProjectSession(res, { projectId: String(project._id), memberId: String(creator._id), role: 'admin', adminVerified: true, passwordVersion: project.passwordVersion });
+  await setProjectSession(res, { projectId: String(project._id), memberId: String(creator._id), role: 'admin', adminVerified: true, passwordVersion: project.passwordVersion });
   res.status(201).json({ _id: project._id, name: project.name, key: project.key, portfolioId: portfolio._id, portfolioName: portfolio.name });
 });
 
@@ -54,28 +54,28 @@ router.post('/projects/:projectId/unlock', passwordLimit, async (req, res) => {
   const member = await Member.findOne({ projectId: project._id, email, archivedAt: null });
   if (!member) { res.status(403).json({ error: 'member_not_added', message: 'You are not added to this project. Ask an Admin to add your email to the team.' }); return; }
   if (!await verifyPassword(password, project.teamPasswordHash)) { res.status(401).json({ error: 'invalid_project_password', message: 'The project password is incorrect.' }); return; }
-  setProjectSession(res, { projectId: String(project._id), memberId: String(member._id), role: 'team', adminVerified: false, passwordVersion: project.passwordVersion });
+  await setProjectSession(res, { projectId: String(project._id), memberId: String(member._id), role: 'team', adminVerified: false, passwordVersion: project.passwordVersion });
   res.json({ role: 'team', member: { _id: member._id, name: member.name, email: member.email } });
 });
 
 router.use('/projects/:projectId', projectAccess);
 
 router.post('/projects/:projectId/admin-mode', passwordLimit, async (req, res) => {
-  const session = sessionFromRequest(req);
+  const session = await sessionFromRequest(req);
   const { password } = z.object({ password: passwordSchema.optional() }).parse(req.body || {});
   const project = await Project.findById(req.params.projectId).select('+adminPasswordHash');
   if (!project || !session) { res.status(401).json({ error: 'project_password_required' }); return; }
   if (!session.adminVerified && !password) { res.status(401).json({ error: 'admin_password_required', message: 'Enter the project Admin password once to enable Admin mode.' }); return; }
   if (!session.adminVerified && !await verifyPassword(password!, project.adminPasswordHash)) { res.status(401).json({ error: 'invalid_admin_password', message: 'The Admin password is incorrect.' }); return; }
-  setProjectSession(res, { ...session, role: 'admin', adminVerified: true });
+  await updateProjectSession(session, { role: 'admin', adminVerified: true });
   res.json({ role: 'admin', adminVerified: true });
 });
 router.post('/projects/:projectId/team-mode', async (req, res) => {
-  const session = sessionFromRequest(req);
+  const session = await sessionFromRequest(req);
   if (!session) { res.status(401).json({ error: 'project_password_required' }); return; }
-  setProjectSession(res, { ...session, role: 'team' }); res.json({ role: 'team', adminVerified: session.adminVerified });
+  await updateProjectSession(session, { role: 'team' }); res.json({ role: 'team', adminVerified: session.adminVerified });
 });
-router.post('/projects/:projectId/lock', (_req, res) => { clearProjectSession(res); res.status(204).end(); });
+router.post('/projects/:projectId/lock', async (req, res) => { await clearProjectSession(req, res); res.status(204).end(); });
 
 router.get('/projects/:projectId/snapshot', async (req, res) => {
   const q = scope(req);
@@ -132,7 +132,8 @@ router.patch('/projects/:projectId/passwords', requireCapability('manageProject'
   if (body.teamPassword) update.teamPasswordHash = await hashPassword(body.teamPassword);
   if (body.adminPassword) update.adminPasswordHash = await hashPassword(body.adminPassword);
   Object.assign(project, update); project.passwordVersion += 1; await project.save();
-  setProjectSession(res, { projectId: String(project._id), memberId: req.access!.memberId, role: 'admin', adminVerified: true, passwordVersion: project.passwordVersion, expiresAt: req.access!.sessionExpiresAt });
+  const session = await sessionFromRequest(req);
+  if (session) await updateProjectSession(session, { role: 'admin', adminVerified: true, passwordVersion: project.passwordVersion });
   await audit(req, 'project.passwords_changed', 'project', String(project._id));
   res.json({ ok: true, passwordVersion: project.passwordVersion });
 });

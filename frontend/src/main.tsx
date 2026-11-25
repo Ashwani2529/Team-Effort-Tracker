@@ -6,6 +6,7 @@ import App from './app/App';
 import './styles/index.css';
 import './styles/taxonomy.css';
 import './styles/scheduling.css';
+import './styles/workspace-enhancements.css';
 import './styles/responsive.css';
 
 const client = new QueryClient({ defaultOptions: { queries: { staleTime: 15_000, retry: 1, refetchOnWindowFocus: false }, mutations: { retry: 0 } } });
