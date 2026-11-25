@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test';
 const task = {
   _id: 'task-1', __v: 0, title: 'Calendar delivery', description: 'Release activity', ticket: 'CAL-1', towerId: 'tower-1', flagIds: [], primaryAssigneeId: 'member-1', contributorIds: [],
   status: 'deployed', priority: 'high', startDate: '2026-11-23', dueDate: '2026-11-25', completionDate: '2026-11-26', deploymentDate: '2026-11-27',
-  estimatedHours: 8, worklogMinutes: 120, comments: [], worklogs: [{ _id: 'worklog-1', memberId: 'member-1', authorName: 'Taylor Member', workDate: '2026-11-24', minutes: 120, note: 'Verified delivery work', createdAt: '2026-11-24' }], statusHistory: [], createdAt: '2026-11-20', updatedAt: '2026-11-27'
+  estimatedHours: 8, worklogMinutes: 120, comments: [], worklogs: [{ _id: 'worklog-1', memberId: 'member-2', authorName: 'Other Member', workDate: '2026-11-24', minutes: 120, note: 'Verified delivery work entered by another member', createdAt: '2026-11-24' }], statusHistory: [], createdAt: '2026-11-20', updatedAt: '2026-11-27'
 };
 
 const secondTask = {
@@ -171,7 +171,9 @@ test('opens the same member statistics dialog from Team and Assignees', async ({
   let dialog = page.getByRole('dialog', { name: 'Taylor Member' });
   await expect(dialog).toBeVisible();
   await expect(dialog).toContainText('1');
+  await expect(dialog).toContainText('8.0h');
   await expect(dialog).toContainText('2.0h');
+  await expect(dialog).toContainText('Total estimated hours');
   await expect(dialog).toContainText('Deployed');
   await dialog.getByRole('button', { name: 'Close member statistics' }).click();
 
