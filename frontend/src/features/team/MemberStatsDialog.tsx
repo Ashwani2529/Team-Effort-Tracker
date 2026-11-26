@@ -1,5 +1,5 @@
 import { format, parseISO } from 'date-fns';
-import { AlertTriangle, CalendarClock, Clock3, X } from 'lucide-react';
+import { CalendarClock, Clock3, X } from 'lucide-react';
 import { STATUSES, type Status } from '@effort-tracker/shared';
 import type { Deliverable, Member, MemberCapacityPoint } from '../../types';
 
@@ -27,7 +27,6 @@ export function MemberStatsDialog({ member, deliverables, today, capacity, onClo
       <button className="drawer-close" aria-label="Close member statistics" onClick={onClose}><X size={18} /></button>
       <header className="member-dialog-hero"><span className="avatar large" style={{ background: member.color }}>{initials}</span><div><span className="eyebrow">Team member statistics</span><h1 id="member-stats-title">{member.name}</h1><p>{member.email}{member.title || member.department ? ` · ${member.title || member.department}` : ''}</p></div></header>
       <div className="member-dialog-body">
-        {capacity?.overPlanned && <div className="capacity-warning"><AlertTriangle size={17} /><div><strong>!</strong><span>Planned remaining work exceeds this member's availability today.</span></div></div>}
         <div className="member-summary-grid"><div><strong>{work.length}</strong><span>Total assigned tasks</span></div><div><strong>{estimatedHours.toFixed(1)}h</strong><span>Total Estimated Efforts</span></div><div><strong>{(verifiedMinutes / 60).toFixed(1)}h</strong><span>Verified work hours</span></div><div className={overdue ? 'attention' : ''}><strong>{overdue}</strong><span>Overdue tasks</span></div></div>
         {capacity && <div className="member-capacity-strip"><span><b>{capacity.todayCapacity.toFixed(1)}h</b> capacity today</span><span><b>{capacity.todayLogged.toFixed(1)}h</b> logged today</span><span><b>{capacity.todayAvailability.toFixed(1)}h</b> available today</span></div>}
         <section><div className="section-title"><h2>Work by status</h2><span>{work.length} total</span></div><div className="member-status-grid">{STATUSES.map((status) => <div key={status}><i style={{ background: statusMeta[status].color }} /><strong>{work.filter((item) => item.status === status).length}</strong><span>{statusMeta[status].label}</span></div>)}</div></section>

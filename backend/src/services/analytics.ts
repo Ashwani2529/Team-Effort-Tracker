@@ -58,9 +58,7 @@ export function calculateProjectAnalytics({ project, members, deliverables, work
     const availability = round(days.reduce((sum, value) => sum + value.availability, 0));
     const overtime = round(days.reduce((sum, value) => sum + value.overtime, 0));
     const todayDay = memberDay(member, today);
-    const assignedOpen = deliverables.filter((item) => String(item.primaryAssigneeId) === String(member._id) || String(item.primaryAssigneeId) === String(member.legacyId)).filter((item) => !['done', 'deployed'].includes(item.status));
-    const planned = assignedOpen.reduce((sum, item) => sum + Math.max(Number(item.estimatedHours || 0) - Number(item.worklogMinutes || 0) / 60, 0), 0);
-    return { memberId: String(member._id), name: member.name, capacity, logged, availability, overtime, todayCapacity: round(todayDay.capacity), todayLogged: round(todayDay.logged), todayAvailability: round(todayDay.availability), todayOvertime: round(todayDay.overtime), overPlanned: planned > todayDay.availability };
+    return { memberId: String(member._id), name: member.name, capacity, logged, availability, overtime, todayCapacity: round(todayDay.capacity), todayLogged: round(todayDay.logged), todayAvailability: round(todayDay.availability), todayOvertime: round(todayDay.overtime) };
   });
 
   const relevant = deliverables.filter((item) => {

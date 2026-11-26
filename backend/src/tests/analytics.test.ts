@@ -12,7 +12,7 @@ describe('project analytics', () => {
     const admin = result.members.find((member) => member.memberId === 'admin')!;
     const assignee = result.members.find((member) => member.memberId === 'member')!;
     expect(admin.todayLogged).toBe(0);
-    expect(assignee).toMatchObject({ todayCapacity: 4, todayLogged: 2, todayAvailability: 2, overPlanned: true });
+    expect(assignee).toMatchObject({ todayCapacity: 4, todayLogged: 2, todayAvailability: 2 });
     expect(result.today).toMatchObject({ capacity: 12, logged: 2, availability: 10, adjustedEffort: 1 });
     expect(result.monthTotals.remainingEffort).toBe(6);
     expect(result.minMonth).toBe('2026-11');
