@@ -16,6 +16,13 @@ const groups = [
   ['Manage', [['admin', 'Admin', Settings2]]]
 ] as const;
 const premium = new Set(['reports', 'admin']);
+function socketServerUrl() {
+  const explicit = import.meta.env.VITE_SOCKET_URL as string | undefined;
+  if (explicit) return explicit;
+  const apiUrl = import.meta.env.VITE_API_URL as string | undefined;
+  if (!apiUrl || apiUrl.startsWith('/')) return '/';
+  try { return new URL(apiUrl, window.location.origin).origin; } catch { return '/'; }
+}
 
 export interface PageContext { snapshot: Snapshot; search: string; setSearch: (v: string) => void; period: string; setPeriod: (v: string) => void; openTask: (id?: string) => void }
 export function Shell({ projects }: { projects: PublicProject[] }) {
@@ -27,7 +34,7 @@ export function Shell({ projects }: { projects: PublicProject[] }) {
   useEffect(() => { const focusSearch = (event: KeyboardEvent) => { if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); searchInput.current?.focus(); } }; window.addEventListener('keydown', focusSearch); return () => window.removeEventListener('keydown', focusSearch); }, []);
   useEffect(() => {
     if (!snapshot.data) return;
-    const socket = io('/', { withCredentials: true });
+    const socket = io(socketServerUrl(), { withCredentials: true });
     socket.emit('project:join', projectId);
     ['deliverable:created', 'deliverable:updated', 'deliverable:deleted', 'roster:updated'].forEach((event) => socket.on(event, () => { client.invalidateQueries({ queryKey: ['snapshot', projectId] }); client.invalidateQueries({ queryKey: ['analytics', projectId] }); }));
     return () => { socket.disconnect(); };
