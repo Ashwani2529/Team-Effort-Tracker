@@ -26,4 +26,8 @@ describe('legacy-compatible domain rules', () => {
     const result = deliverableInputSchema.parse({ title: 'Tagged work', towerId: 'tower', status: 'todo', priority: 'medium', primaryAssigneeId: 'member', contributorIds: [], flagIds: ['red', 'green'], ticket: 'N/A', startDate: '2026-11-01', dueDate: '2026-11-10', estimatedHours: 3, blocked: false, toBeDeployed: false });
     expect(result.flagIds).toEqual(['red', 'green']);
   });
+  it('accepts Critical as the highest priority option', () => {
+    const result = deliverableInputSchema.parse({ title: 'Production outage', towerId: 'tower', status: 'doing', priority: 'critical', primaryAssigneeId: 'member', contributorIds: [], flagIds: [], ticket: 'INC-1', startDate: '2026-11-01', dueDate: '2026-11-02', estimatedHours: 4, blocked: false, toBeDeployed: false });
+    expect(result.priority).toBe('critical');
+  });
 });

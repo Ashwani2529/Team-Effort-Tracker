@@ -6,6 +6,8 @@ import { deliverableInputSchema } from '@effort-tracker/shared';
 import { clearProjectSession, hashPassword, sessionFromRequest, setProjectSession, updateProjectSession, verifyPassword, verifySetupPassword } from '../middleware/auth.js';
 import { projectAccess, requireCapability } from '../middleware/access.js';
 import { AuditEvent, Deliverable, DirectoryContact, Flag, Leave, LegacyActivity, Member, Notification, Organization, Portfolio, Project, RosterOverride, Tower, Worklog } from '../models/index.js';
+import { calculateProjectAnalytics } from '../services/analytics.js';
+import { dependencyCreatesCycle, statusDates, subtaskCreatesCycle } from '../services/workflow.js';
 
 const router = Router();
 const passwordSchema = z.string().min(8).max(128);
@@ -22,6 +24,16 @@ async function validateFlags(req: any, flagIds: string[]): Promise<string[]> {
   const count = await Flag.countDocuments({ ...scope(req), _id: { $in: unique }, archivedAt: null });
   if (count !== unique.length) throw Object.assign(new Error('One or more selected flags are unavailable.'), { status: 400 });
   return unique;
+}
+async function unfinishedDependencies(req: any, item: any) {
+  const dependencyIds = [...new Set((item.dependencyIds || []).map(String))];
+  if (!dependencyIds.length) return [];
+  return Deliverable.find({ ...scope(req), _id: { $in: dependencyIds }, deletedAt: null, status: { $nin: ['done', 'deployed'] } }, { title: 1 }).lean();
+}
+async function guardCompletion(req: any, item: any, nextStatus: string) {
+  if (!['done', 'deployed'].includes(nextStatus)) return;
+  const unfinished = await unfinishedDependencies(req, item);
+  if (unfinished.length) throw Object.assign(new Error(`Complete ${unfinished.length} unfinished dependenc${unfinished.length === 1 ? 'y' : 'ies'} first.`), { status: 409, code: 'unfinished_dependencies' });
 }
 
 router.get('/health', (_req, res) => res.json({ status: 'ok', service: 'effort-tracker-api' }));
@@ -88,6 +100,19 @@ router.get('/projects/:projectId/snapshot', async (req, res) => {
   for (const worklog of worklogs) { const key = String(worklog.deliverableId); worklogsByDeliverable.set(key, [...(worklogsByDeliverable.get(key) || []), worklog]); }
   for (const deliverable of deliverables as any[]) deliverable.worklogs = worklogsByDeliverable.get(String(deliverable._id)) || [];
   res.json({ project, towers, flags, members, deliverables, leaves, rosterOverrides, activity, directory, notifications, access: req.access, serverDate: istDate() });
+});
+
+router.get('/projects/:projectId/analytics', async (req, res) => {
+  const month = z.string().regex(/^\d{4}-\d{2}$/).default(istDate().slice(0, 7)).parse(req.query.month);
+  const q = scope(req);
+  const [project, members, deliverables, worklogs, leaves, overrides] = await Promise.all([
+    Project.findById(req.params.projectId).lean(), Member.find({ ...q, archivedAt: null }).lean(), Deliverable.find({ ...q, deletedAt: null }).lean(),
+    Worklog.find({ ...q, deletedAt: null }).lean(), Leave.find(q).lean(), RosterOverride.find(q).lean()
+  ]);
+  if (!project) { res.status(404).json({ error: 'project_not_found' }); return; }
+  const currentMonth = istDate().slice(0, 7), minMonth = String((project as any).createdAt || (project as any).startDate || istDate()).slice(0, 7);
+  const selectedMonth = month < minMonth ? minMonth : month > currentMonth ? currentMonth : month;
+  res.json(calculateProjectAnalytics({ project, members, deliverables, worklogs, leaves, overrides, month: selectedMonth, today: istDate() }));
 });
 
 router.post('/projects/:projectId/towers', requireCapability('admin'), async (req, res) => {
@@ -168,9 +193,9 @@ router.put('/projects/:projectId/roster/:memberId/:date', requireCapability('edi
 
 router.post('/projects/:projectId/deliverables', requireCapability('edit'), async (req, res) => {
   const input = deliverableInputSchema.parse(req.body), nowDate = istDate();
+  if (input.status === 'deployed') { res.status(409).json({ error: 'deliver_first', message: 'Mark this task as Delivered before deploying it.' }); return; }
   input.flagIds = await validateFlags(req, input.flagIds);
-  const completionDate = ['done', 'deployed'].includes(input.status) ? input.completionDate || nowDate : null;
-  const deploymentDate = input.status === 'deployed' ? input.deploymentDate || nowDate : null;
+  const { completionDate, deploymentDate } = statusDates(undefined, input.status, nowDate, input);
   const item = await Deliverable.create({ ...scope(req), ...input, completionDate, deploymentDate, sourceSystem: 'native', contributorIds: [...new Set(input.contributorIds.filter((id) => id !== input.primaryAssigneeId))], statusHistory: [{ status: input.status, at: new Date() }] });
   await audit(req, 'deliverable.created', 'deliverable', String(item._id), undefined, item.toObject()); req.app.get('io')?.to(`project:${req.params.projectId}`).emit('deliverable:created', item); res.status(201).json(item);
 });
@@ -181,11 +206,8 @@ router.put('/projects/:projectId/deliverables/:id', requireCapability('edit'), a
   const expectedVersion = z.coerce.number().int().parse(req.headers['if-match'] ?? req.body.version ?? current.__v);
   if (current.__v !== expectedVersion) { res.status(409).json({ error: 'version_conflict', current }); return; }
   input.flagIds = await validateFlags(req, input.flagIds);
-  const before = current.toObject(), today = istDate(); let completionDate = input.completionDate || null, deploymentDate = input.deploymentDate || null;
-  if (['done', 'deployed'].includes(input.status) && !completionDate) completionDate = current.completionDate || today;
-  if (input.status === 'deployed' && !deploymentDate) deploymentDate = current.deploymentDate || today;
-  if (!['done', 'deployed'].includes(input.status)) { completionDate = null; deploymentDate = null; }
-  if (input.status !== 'deployed') deploymentDate = null;
+  await guardCompletion(req, current, input.status);
+  const before = current.toObject(), { completionDate, deploymentDate } = statusDates(current, input.status, istDate(), input);
   Object.assign(current, input, { completionDate, deploymentDate, contributorIds: [...new Set(input.contributorIds.filter((id) => id !== input.primaryAssigneeId))] });
   if (before.status !== input.status) current.statusHistory.push({ status: input.status, at: new Date() } as any);
   await current.save(); await audit(req, 'deliverable.updated', 'deliverable', String(current._id), before, current.toObject()); req.app.get('io')?.to(`project:${req.params.projectId}`).emit('deliverable:updated', current); res.json(current);
@@ -204,16 +226,53 @@ router.patch('/projects/:projectId/deliverables/:id/status', requireCapability('
   const { status, version } = z.object({ status: z.enum(['backlog', 'todo', 'doing', 'review', 'done', 'deployed']), version: z.number().int() }).parse(req.body);
   const item = await Deliverable.findOne({ _id: req.params.id, ...scope(req), deletedAt: null }); if (!item) { res.status(404).json({ error: 'deliverable_not_found' }); return; }
   if (item.__v !== version) { res.status(409).json({ error: 'version_conflict', current: item }); return; }
+  await guardCompletion(req, item, status);
   const before = item.toObject(); item.status = status; item.statusHistory.push({ status, at: new Date() } as any);
-  if (status === 'done' || status === 'deployed') item.completionDate ||= istDate(); else { item.completionDate = null; item.deploymentDate = null; }
-  if (status === 'deployed') { item.deploymentDate ||= istDate(); item.toBeDeployed = false; } else item.deploymentDate = null;
+  const dates = statusDates(before, status, istDate()); item.completionDate = dates.completionDate; item.deploymentDate = dates.deploymentDate;
+  if (status === 'deployed') item.toBeDeployed = false;
   await item.save(); await audit(req, 'deliverable.status_changed', 'deliverable', String(item._id), before, item.toObject()); req.app.get('io')?.to(`project:${req.params.projectId}`).emit('deliverable:updated', item); res.json(item);
 });
 
 router.delete('/projects/:projectId/deliverables/:id', requireCapability('delete'), async (req, res) => {
   const item = await Deliverable.findOneAndUpdate({ _id: req.params.id, ...scope(req), deletedAt: null }, { $set: { deletedAt: new Date() } }, { new: true });
   if (!item) { res.status(404).json({ error: 'deliverable_not_found' }); return; }
+  await Deliverable.updateMany({ ...scope(req), deletedAt: null }, { $pull: { dependencyIds: String(item._id) } });
+  await Deliverable.updateMany({ ...scope(req), deletedAt: null, parentDeliverableId: String(item._id) }, { $unset: { parentDeliverableId: 1 } });
   await audit(req, 'deliverable.deleted', 'deliverable', String(item._id)); req.app.get('io')?.to(`project:${req.params.projectId}`).emit('deliverable:deleted', { id: item._id }); res.status(204).end();
+});
+
+router.post('/projects/:projectId/deliverables/:id/relationships', requireCapability('edit'), async (req, res) => {
+  const { type, targetId } = z.object({ type: z.enum(['subtask', 'dependency']), targetId: z.string().min(1) }).parse(req.body);
+  if (targetId === req.params.id) { res.status(400).json({ error: 'self_relationship', message: 'A task cannot link to itself.' }); return; }
+  const q = scope(req), [item, target] = await Promise.all([
+    Deliverable.findOne({ _id: req.params.id, ...q, deletedAt: null }), Deliverable.findOne({ _id: targetId, ...q, deletedAt: null })
+  ]);
+  if (!item || !target) { res.status(404).json({ error: 'deliverable_not_found' }); return; }
+  if (type === 'subtask') {
+    if (target.parentDeliverableId && String(target.parentDeliverableId) !== String(item._id)) { res.status(409).json({ error: 'subtask_has_parent', message: 'This task already belongs to another parent.' }); return; }
+    const tree = await Deliverable.find({ ...q, deletedAt: null }, { parentDeliverableId: 1 }).lean();
+    const parents = new Map<string, string | undefined>(tree.map((entry: any) => [String(entry._id), entry.parentDeliverableId ? String(entry.parentDeliverableId) : undefined]));
+    if (subtaskCreatesCycle(String(item._id), String(target._id), parents)) { res.status(409).json({ error: 'subtask_cycle', message: 'This subtask link would create a cycle.' }); return; }
+    const before = target.toObject(); target.parentDeliverableId = String(item._id); await target.save();
+    await audit(req, 'deliverable.subtask_added', 'deliverable', String(item._id), before, target.toObject());
+  } else {
+    const all = await Deliverable.find({ ...q, deletedAt: null }, { dependencyIds: 1 }).lean();
+    const dependencies = new Map<string, string[]>(all.map((entry: any) => [String(entry._id), (entry.dependencyIds || []).map(String)]));
+    if (dependencyCreatesCycle(String(item._id), String(target._id), dependencies)) { res.status(409).json({ error: 'dependency_cycle', message: 'This dependency would create a cycle.' }); return; }
+    if (!(item.dependencyIds || []).map(String).includes(String(target._id))) item.dependencyIds.push(String(target._id));
+    await item.save(); await audit(req, 'deliverable.dependency_added', 'deliverable', String(item._id), undefined, { targetId });
+  }
+  req.app.get('io')?.to(`project:${req.params.projectId}`).emit('deliverable:updated', item); res.status(201).json({ ok: true });
+});
+
+router.delete('/projects/:projectId/deliverables/:id/relationships/:type/:targetId', requireCapability('edit'), async (req, res) => {
+  const type = z.enum(['subtask', 'dependency']).parse(req.params.type), q = scope(req);
+  const item = await Deliverable.findOne({ _id: req.params.id, ...q, deletedAt: null });
+  if (!item) { res.status(404).json({ error: 'deliverable_not_found' }); return; }
+  if (type === 'subtask') await Deliverable.updateOne({ _id: req.params.targetId, ...q, parentDeliverableId: String(item._id), deletedAt: null }, { $unset: { parentDeliverableId: 1 } });
+  else { item.dependencyIds = (item.dependencyIds || []).filter((id: unknown) => String(id) !== req.params.targetId); await item.save(); }
+  await audit(req, `deliverable.${type}_removed`, 'deliverable', String(item._id), undefined, { targetId: req.params.targetId });
+  req.app.get('io')?.to(`project:${req.params.projectId}`).emit('deliverable:updated', item); res.status(204).end();
 });
 
 router.post('/projects/:projectId/deliverables/:id/comments', requireCapability('edit'), async (req, res) => {

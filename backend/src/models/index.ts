@@ -45,8 +45,9 @@ const deliverableSchema = new Schema({
   ...scope, legacyId: String, sourceSystem: { type: String, default: 'native' }, sourceDatasetId: String, plannerId: String,
   title: { type: String, required: true }, description: String, ticket: String, towerId: String, flagIds: [String], primaryAssigneeId: String,
   contributorIds: [String], status: { type: String, enum: ['backlog', 'todo', 'doing', 'review', 'done', 'deployed'], index: true },
-  priority: { type: String, enum: ['high', 'medium', 'low'] }, startDate: String, dueDate: { type: String, index: true }, completionDate: String, deploymentDate: String,
+  priority: { type: String, enum: ['critical', 'high', 'medium', 'low'] }, startDate: String, dueDate: { type: String, index: true }, completionDate: String, deploymentDate: String,
   estimatedHours: Number, legacyActualHours: Number, worklogMinutes: { type: Number, default: 0 }, legacyEffortMode: String,
+  parentDeliverableId: String, dependencyIds: [String],
   blocked: Boolean, blockReason: String, blockedSince: Date, blockedMilliseconds: Number, toBeDeployed: Boolean, plannedDeploymentDate: String,
   comments: [commentSchema], statusHistory: [historySchema], emailAttachments: [Schema.Types.Mixed],
   defects: Number, escapedDefects: Number, testsTotal: Number, testsAutomated: Number, automatedDeployment: Boolean, hoursSaved: Number,
@@ -55,6 +56,7 @@ const deliverableSchema = new Schema({
 deliverableSchema.index({ projectId: 1, sourceSystem: 1, sourceDatasetId: 1, legacyId: 1 }, { unique: true, partialFilterExpression: { legacyId: { $type: 'string' }, sourceDatasetId: { $type: 'string' } } });
 deliverableSchema.index({ projectId: 1, sourceSystem: 1, plannerId: 1 }, { unique: true, partialFilterExpression: { plannerId: { $type: 'string' } } });
 deliverableSchema.index({ projectId: 1, status: 1, dueDate: 1 });
+deliverableSchema.index({ projectId: 1, parentDeliverableId: 1 });
 export const Deliverable: any = models.Deliverable || model('Deliverable', deliverableSchema);
 
 export const Worklog = scopedModel('Worklog', { deliverableId: { type: Schema.Types.ObjectId, required: true }, memberId: { type: Schema.Types.ObjectId, required: true }, authorName: { type: String, required: true }, workDate: String, minutes: Number, note: String, source: String, deletedAt: Date }, [[{ projectId: 1, deliverableId: 1, createdAt: -1 }, {}]]);
