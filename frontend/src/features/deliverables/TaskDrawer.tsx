@@ -1,10 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, Check, ClipboardList, GitBranch, MessageSquare, Pencil, Plus, Save, Send, Timer, Trash2, X } from 'lucide-react';
-import { deliverableInputSchema, STATUSES, type DeliverableInput, type Status } from '@effort-tracker/shared';
+import { AlertTriangle, Check, ChevronLeft, ClipboardList, GitBranch, Link2, MessageSquare, Pencil, Plus, Save, Search, Send, Timer, Trash2, X } from 'lucide-react';
+import { deliverableInputSchema, PRIORITIES, STATUSES, type DeliverableInput, type Status } from '@effort-tracker/shared';
 import { z } from 'zod';
 import { useParams } from 'react-router-dom';
 import { useApi } from '../../hooks/use-api';
@@ -15,14 +15,19 @@ const labels: Record<Status, string> = {
 };
 
 export function TaskDrawer({ snapshot, id, onClose }: { snapshot: Snapshot; id: string; onClose: () => void }) {
-  const item = snapshot.deliverables.find((value) => value._id === id), create = id === 'new';
+  const [activeId, setActiveId] = useState(id), [trail, setTrail] = useState<string[]>([]);
+  useEffect(() => { setActiveId(id); setTrail([]); }, [id]);
+  const item = snapshot.deliverables.find((value) => value._id === activeId), create = activeId === 'new';
+  const openTask = (nextId: string) => { if (nextId !== activeId) { setTrail((values) => [...values, activeId]); setActiveId(nextId); } };
+  const goBack = () => setTrail((values) => { const copy = [...values], previous = copy.pop(); if (previous) setActiveId(previous); return copy; });
   return <Dialog.Root open onOpenChange={(open: boolean) => !open && onClose()}>
     <Dialog.Portal>
       <Dialog.Overlay className="drawer-overlay" />
       <Dialog.Content className="drawer">
         <Dialog.Title className="sr-only">{create ? 'New deliverable' : item?.title}</Dialog.Title>
+        {trail.length > 0 && <button className="drawer-back" aria-label="Back to previous task" onClick={goBack}><ChevronLeft size={18} /></button>}
         <Dialog.Close className="drawer-close"><X size={19} /></Dialog.Close>
-        {create ? <CreateTask snapshot={snapshot} onDone={onClose} /> : item ? <TaskDetails item={item} snapshot={snapshot} onClose={onClose} /> : <div className="empty-state">This deliverable is no longer available.</div>}
+        {create ? <CreateTask snapshot={snapshot} onDone={onClose} /> : item ? <TaskDetails key={item._id} item={item} snapshot={snapshot} onClose={onClose} onOpenTask={openTask} /> : <div className="empty-state">This deliverable is no longer available.</div>}
       </Dialog.Content>
     </Dialog.Portal>
   </Dialog.Root>;
@@ -44,7 +49,8 @@ function EditTask({ item, snapshot, onDone }: { item: Deliverable; snapshot: Sna
   });
   const mutation = useMutation({
     mutationFn: (value: DeliverableInput) => call(`/projects/${projectId}/deliverables/${item._id}`, { method: 'PUT', headers: { 'If-Match': String(item.__v) }, body: JSON.stringify(value) }),
-    onSuccess: async () => { await client.invalidateQueries({ queryKey: ['snapshot', projectId] }); onDone(); }
+    onSuccess: async () => { await client.invalidateQueries({ queryKey: ['snapshot', projectId] }); await client.invalidateQueries({ queryKey: ['analytics', projectId] }); onDone(); },
+    onError: (error) => window.alert(error.message)
   });
   const status = form.watch('status'), blocked = form.watch('blocked'), toBeDeployed = form.watch('toBeDeployed'), selectedFlags = form.watch('flagIds') || [];
   return <form className="drawer-form" onSubmit={form.handleSubmit((value) => mutation.mutate(value))}>
@@ -56,12 +62,12 @@ function EditTask({ item, snapshot, onDone }: { item: Deliverable; snapshot: Sna
     </div>
     <div className="form-grid">
       <Field label="Stage"><select {...form.register('status')}>{STATUSES.map((value) => <option key={value} value={value}>{labels[value]}</option>)}</select></Field>
-      <Field label="Priority"><select {...form.register('priority')}><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select></Field>
+      <Field label="Priority"><select {...form.register('priority')}>{PRIORITIES.map((value) => <option key={value} value={value}>{value[0]!.toUpperCase() + value.slice(1)}</option>)}</select></Field>
       <Field label="Tower"><select {...form.register('towerId')}>{snapshot.towers.map((tower) => <option key={tower._id} value={tower._id}>{tower.name}</option>)}</select></Field>
       <Field label="Tags"><TagPicker flags={snapshot.flags} selected={selectedFlags} onChange={(flagIds) => form.setValue('flagIds', flagIds, { shouldDirty: true })} /></Field>
       <Field label="Primary assignee"><select {...form.register('primaryAssigneeId')}>{snapshot.members.map((member) => <option key={member._id} value={member._id}>{member.name}</option>)}</select></Field>
       <Field label="Ticket or N/A"><input {...form.register('ticket')} /></Field>
-      <Field label="Estimated hours"><input type="number" min="0.5" step="0.5" {...form.register('estimatedHours', { valueAsNumber: true })} /></Field>
+      <Field label="Estimated Efforts"><input type="number" min="0.5" step="0.5" {...form.register('estimatedHours', { valueAsNumber: true })} /></Field>
       <Field label="Start date"><input type="date" {...form.register('startDate')} /></Field>
       <Field label="Due date"><input type="date" {...form.register('dueDate')} /></Field>
       {(status === 'done' || status === 'deployed') && <Field label="Completion date"><input type="date" {...form.register('completionDate')} /></Field>}
@@ -107,13 +113,13 @@ function CreateTask({ snapshot, onDone }: { snapshot: Snapshot; onDone: () => vo
       {form.formState.errors.title && <small className="field-error">{form.formState.errors.title.message}</small>}
     </div>
     <div className="form-grid">
-      <Field label="Stage"><select {...form.register('status')}>{STATUSES.map((value) => <option key={value} value={value}>{labels[value]}</option>)}</select></Field>
-      <Field label="Priority"><select {...form.register('priority')}><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select></Field>
+      <Field label="Stage"><select {...form.register('status')}>{STATUSES.filter((value) => value !== 'deployed').map((value) => <option key={value} value={value}>{labels[value]}</option>)}</select></Field>
+      <Field label="Priority"><select {...form.register('priority')}>{PRIORITIES.map((value) => <option key={value} value={value}>{value[0]!.toUpperCase() + value.slice(1)}</option>)}</select></Field>
       <Field label="Tower"><select {...form.register('towerId')}>{snapshot.towers.map((tower) => <option key={tower._id} value={tower._id}>{tower.name}</option>)}</select></Field>
       <Field label="Tags"><TagPicker flags={snapshot.flags} selected={selectedFlags} onChange={(flagIds) => form.setValue('flagIds', flagIds, { shouldDirty: true })} /></Field>
       <Field label="Primary assignee"><select {...form.register('primaryAssigneeId')}>{snapshot.members.map((member) => <option key={member._id} value={member._id}>{member.name}</option>)}</select></Field>
       <Field label="Ticket or N/A"><input {...form.register('ticket')} /></Field>
-      <Field label="Estimated hours"><input type="number" min="0.5" step="0.5" {...form.register('estimatedHours', { valueAsNumber: true })} /></Field>
+      <Field label="Estimated Efforts"><input type="number" min="0.5" step="0.5" {...form.register('estimatedHours', { valueAsNumber: true })} /></Field>
       <Field label="Start date"><input type="date" {...form.register('startDate')} /></Field>
       <Field label="Due date"><input type="date" {...form.register('dueDate')} /></Field>
       {(status === 'done' || status === 'deployed') && <Field label="Completion date"><input type="date" {...form.register('completionDate')} /></Field>}
@@ -134,11 +140,11 @@ function CreateTask({ snapshot, onDone }: { snapshot: Snapshot; onDone: () => vo
   </form>;
 }
 
-function TaskDetails({ item, snapshot, onClose }: { item: Deliverable; snapshot: Snapshot; onClose: () => void }) {
+function TaskDetails({ item, snapshot, onClose, onOpenTask }: { item: Deliverable; snapshot: Snapshot; onClose: () => void; onOpenTask: (id: string) => void }) {
   const { projectId = '' } = useParams(), call = useApi(), client = useQueryClient();
-  const [tab, setTab] = useState<'details' | 'effort' | 'activity'>('details'), [editing, setEditing] = useState(false), [comment, setComment] = useState(''), [minutes, setMinutes] = useState(60), [note, setNote] = useState('');
-  const refresh = () => client.invalidateQueries({ queryKey: ['snapshot', projectId] });
-  const status = useMutation({ mutationFn: (next: Status) => call(`/projects/${projectId}/deliverables/${item._id}/status`, { method: 'PATCH', body: JSON.stringify({ status: next, version: item.__v }) }), onSuccess: refresh });
+  const [tab, setTab] = useState<'details' | 'effort' | 'activity'>('details'), [editing, setEditing] = useState(false), [comment, setComment] = useState(''), [minutes, setMinutes] = useState(60), [note, setNote] = useState(''), [visibleComments, setVisibleComments] = useState(5);
+  const refresh = async () => { await client.invalidateQueries({ queryKey: ['snapshot', projectId] }); await client.invalidateQueries({ queryKey: ['analytics', projectId] }); };
+  const status = useMutation({ mutationFn: (next: Status) => call(`/projects/${projectId}/deliverables/${item._id}/status`, { method: 'PATCH', body: JSON.stringify({ status: next, version: item.__v }) }), onSuccess: refresh, onError: (error) => window.alert(error.message) });
   const updateFlags = useMutation({ mutationFn: (flagIds: string[]) => call(`/projects/${projectId}/deliverables/${item._id}/flags`, { method: 'PATCH', body: JSON.stringify({ flagIds, version: item.__v }) }), onSuccess: refresh });
   const addComment = useMutation({ mutationFn: () => call(`/projects/${projectId}/deliverables/${item._id}/comments`, { method: 'POST', body: JSON.stringify({ text: comment }) }), onSuccess: async () => { setComment(''); await refresh(); } });
   const addWorklog = useMutation({ mutationFn: () => call(`/projects/${projectId}/deliverables/${item._id}/worklogs`, { method: 'POST', body: JSON.stringify({ workDate: snapshot.serverDate, minutes, note }) }), onSuccess: async () => { setNote(''); setTab('details'); await refresh(); } });
@@ -149,6 +155,7 @@ function TaskDetails({ item, snapshot, onClose }: { item: Deliverable; snapshot:
   const deleteTask = useMutation({ mutationFn: () => call(`/projects/${projectId}/deliverables/${item._id}`, { method: 'DELETE' }), onSuccess: async () => { await refresh(); onClose(); } });
   const owner = snapshot.members.find((member) => member._id === item.primaryAssigneeId || member.legacyId === item.primaryAssigneeId);
   const tower = snapshot.towers.find((value) => value._id === item.towerId || value.legacyId === item.towerId);
+  const unfinishedDependencies = (item.dependencyIds || []).map((id) => snapshot.deliverables.find((value) => value._id === id)).filter((value): value is Deliverable => Boolean(value && !['done', 'deployed'].includes(value.status)));
   if (editing) return <EditTask item={item} snapshot={snapshot} onDone={() => setEditing(false)} />;
   return <div className="task-detail">
     <div className="drawer-hero">
@@ -162,6 +169,7 @@ function TaskDetails({ item, snapshot, onClose }: { item: Deliverable; snapshot:
         <select value={item.status} disabled={status.isPending || updateFlags.isPending} onChange={(event) => status.mutate(event.target.value as Status)}>{STATUSES.map((value) => <option key={value} value={value}>{labels[value]}</option>)}</select>
         <span className={`priority ${item.priority}`}>{item.priority} priority</span>
         {item.blocked && <span className="chip danger"><AlertTriangle size={13} /> Blocked</span>}
+        {unfinishedDependencies.length > 0 && <span className="chip danger"><Link2 size={13} /> Blocked by {unfinishedDependencies.length}</span>}
       </div>
       {status.error && <small className="field-error">{status.error.message}</small>}
       {deleteTask.error && <small className="field-error">{deleteTask.error.message}</small>}
@@ -180,10 +188,10 @@ function TaskDetails({ item, snapshot, onClose }: { item: Deliverable; snapshot:
         <Prop label="Due" value={item.dueDate || 'Not recorded'} />
         <Prop label="Completed" value={item.completionDate || '—'} />
         <Prop label="Deployed" value={item.deploymentDate || '—'} />
-        <Prop label="Estimate" value={`${item.estimatedHours || 0} hours`} />
+        <Prop label="Estimated Efforts" value={`${item.estimatedHours || 0} hours`} />
         <Prop label="Verified effort" value={`${((item.worklogMinutes || 0) / 60).toFixed(1)} hours`} />
       </dl></section>
-      {item.dataQualityWarnings?.length ? <section><h2>Historical data quality</h2><div className="warning-box"><AlertTriangle size={17} /><div><strong>Preserved source gaps</strong><p>{item.dataQualityWarnings.map((warning) => warning.replaceAll('_', ' ')).join(' · ')}</p></div></div></section> : null}
+      <TaskRelationships item={item} snapshot={snapshot} projectId={projectId} onOpenTask={onOpenTask} />
       <section><div className="section-title"><h2>Verified work notes</h2><span>{item.worklogs?.length || 0}</span></div><div className="worklog-list">
         {(item.worklogs || []).map((worklog) => <WorklogRow key={worklog._id} worklog={worklog} canManage={snapshot.access.role === 'admin' || worklog.memberId === snapshot.access.memberId} pending={updateWorklog.isPending || deleteWorklog.isPending} onSave={(value) => updateWorklog.mutateAsync({ id: worklog._id, ...value })} onDelete={() => deleteWorklog.mutateAsync(worklog._id)} />)}
         {!item.worklogs?.length && <p className="muted">No verified work has been added yet.</p>}
@@ -195,13 +203,44 @@ function TaskDetails({ item, snapshot, onClose }: { item: Deliverable; snapshot:
         <Field label="Work note"><input value={note} onChange={(event) => setNote(event.target.value)} placeholder="What changed?" /></Field>
         <button className="button primary" onClick={() => addWorklog.mutate()} disabled={addWorklog.isPending || minutes < 1 || !note.trim()}><Plus size={15} /> Add worklog</button>
       </div>{addWorklog.error && <div className="error-banner">{addWorklog.error.message}</div>}</section>
-      <section><h2>Effort accounting</h2><div className="effort-summary"><div><span>Estimated</span><strong>{item.estimatedHours || 0}h</strong></div><div><span>Verified actual</span><strong>{((item.worklogMinutes || 0) / 60).toFixed(1)}h</strong></div><div><span>Legacy reference</span><strong>{(item.legacyActualHours || 0).toFixed(1)}h</strong></div></div></section>
+      <section><h2>Effort accounting</h2><div className="effort-summary"><div><span>Estimated Efforts</span><strong>{item.estimatedHours || 0}h</strong></div><div><span>Verified actual</span><strong>{((item.worklogMinutes || 0) / 60).toFixed(1)}h</strong></div><div><span>Remaining effort</span><strong>{Math.max((item.estimatedHours || 0) - (item.worklogMinutes || 0) / 60, 0).toFixed(1)}h</strong></div></div></section>
     </div>}
     {tab === 'activity' && <div className="detail-body">
-      <section><h2>Comments</h2><div className="comment-box"><textarea value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Write an update…" /><button className="button primary compact" disabled={!comment.trim() || addComment.isPending} onClick={() => addComment.mutate()}><Send size={14} /> Send</button></div>{(addComment.error || updateComment.error || deleteComment.error) && <div className="error-banner">{(addComment.error || updateComment.error || deleteComment.error)?.message}</div>}<div className="comments">{[...(item.comments || [])].reverse().slice(0, 30).map((entry) => <CommentRow key={entry._id} entry={entry} canManage={snapshot.access.role === 'admin' || entry.authorId === snapshot.access.memberId} pending={updateComment.isPending || deleteComment.isPending} onSave={(text) => updateComment.mutateAsync({ id: entry._id, text })} onDelete={() => deleteComment.mutateAsync(entry._id)} />)}</div></section>
+      <section><h2>Comments</h2><div className="comment-box"><textarea value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Write an update…" /><button className="button primary compact" disabled={!comment.trim() || addComment.isPending} onClick={() => addComment.mutate()}><Send size={14} /> Send</button></div>{(addComment.error || updateComment.error || deleteComment.error) && <div className="error-banner">{(addComment.error || updateComment.error || deleteComment.error)?.message}</div>}<div className="comments">{[...(item.comments || [])].reverse().slice(0, visibleComments).map((entry) => <CommentRow key={entry._id} entry={entry} canManage={snapshot.access.role === 'admin' || entry.authorId === snapshot.access.memberId} pending={updateComment.isPending || deleteComment.isPending} onSave={(text) => updateComment.mutateAsync({ id: entry._id, text })} onDelete={() => deleteComment.mutateAsync(entry._id)} />)}</div>{visibleComments < (item.comments?.length || 0) && <button className="button compact load-more" onClick={() => setVisibleComments((value) => value + 5)}>Load 5 more</button>}</section>
       <section><h2>Status history</h2><div className="history">{[...(item.statusHistory || [])].reverse().map((entry, index) => <div key={`${entry.at}-${index}`}><i /><span>Moved to <strong>{labels[entry.status]}</strong></span><time>{new Date(entry.at).toLocaleString()}</time></div>)}</div></section>
     </div>}
   </div>;
+}
+
+function TaskRelationships({ item, snapshot, projectId, onOpenTask }: { item: Deliverable; snapshot: Snapshot; projectId: string; onOpenTask: (id: string) => void }) {
+  const call = useApi(), client = useQueryClient();
+  const [subtaskSearch, setSubtaskSearch] = useState(''), [dependencySearch, setDependencySearch] = useState('');
+  const refresh = () => client.invalidateQueries({ queryKey: ['snapshot', projectId] });
+  const add = useMutation({ mutationFn: ({ type, targetId }: { type: 'subtask' | 'dependency'; targetId: string }) => call(`/projects/${projectId}/deliverables/${item._id}/relationships`, { method: 'POST', body: JSON.stringify({ type, targetId }) }), onSuccess: async () => { setSubtaskSearch(''); setDependencySearch(''); await refresh(); } });
+  const remove = useMutation({ mutationFn: ({ type, targetId }: { type: 'subtask' | 'dependency'; targetId: string }) => call(`/projects/${projectId}/deliverables/${item._id}/relationships/${type}/${targetId}`, { method: 'DELETE' }), onSuccess: refresh });
+  const children = snapshot.deliverables.filter((value) => value.parentDeliverableId === item._id);
+  const dependencies = (item.dependencyIds || []).flatMap((id) => { const target = snapshot.deliverables.find((value) => value._id === id); return target ? [target] : []; });
+  const parent = item.parentDeliverableId ? snapshot.deliverables.find((value) => value._id === item.parentDeliverableId) : undefined;
+  const matches = (query: string, type: 'subtask' | 'dependency') => {
+    const text = query.trim().toLowerCase();
+    if (!text) return [];
+    const linked = new Set((type === 'subtask' ? children : dependencies).map((value) => value._id));
+    return snapshot.deliverables.filter((value) => value._id !== item._id && !linked.has(value._id) && (type !== 'subtask' || !value.parentDeliverableId) && [value.title, value.ticket, value.description, snapshot.members.find((member) => member._id === value.primaryAssigneeId || member.legacyId === value.primaryAssigneeId)?.name].some((field) => field?.toLowerCase().includes(text))).slice(0, 6);
+  };
+  return <div className="relationship-sections">
+    {parent && <section><div className="section-title"><h2>Parent task</h2></div><RelationshipRows values={[parent]} type="subtask" removable={false} onOpen={onOpenTask} onRemove={() => undefined} /></section>}
+    <RelationshipPicker title="Subtasks" type="subtask" query={subtaskSearch} setQuery={setSubtaskSearch} values={children} results={matches(subtaskSearch, 'subtask')} pending={add.isPending || remove.isPending} onOpen={onOpenTask} onAdd={(targetId) => add.mutate({ type: 'subtask', targetId })} onRemove={(targetId) => remove.mutate({ type: 'subtask', targetId })} />
+    <RelationshipPicker title="Dependencies" type="dependency" query={dependencySearch} setQuery={setDependencySearch} values={dependencies} results={matches(dependencySearch, 'dependency')} pending={add.isPending || remove.isPending} onOpen={onOpenTask} onAdd={(targetId) => add.mutate({ type: 'dependency', targetId })} onRemove={(targetId) => remove.mutate({ type: 'dependency', targetId })} />
+    {(add.error || remove.error) && <div className="error-banner">{(add.error || remove.error)?.message}</div>}
+  </div>;
+}
+
+function RelationshipPicker({ title, type, query, setQuery, values, results, pending, onOpen, onAdd, onRemove }: { title: string; type: 'subtask' | 'dependency'; query: string; setQuery: (value: string) => void; values: Deliverable[]; results: Deliverable[]; pending: boolean; onOpen: (id: string) => void; onAdd: (id: string) => void; onRemove: (id: string) => void }) {
+  return <section><div className="section-title"><h2>{title}</h2><span>{values.length}</span></div><div className="relationship-search"><Search size={14} /><input aria-label={`Search ${title.toLowerCase()}`} value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`Search tasks to add as ${type}…`} />{query.trim() && <div className="relationship-results">{results.map((value) => <button key={value._id} disabled={pending} onClick={() => onAdd(value._id)}><span><strong>{value.title}</strong><small>{value.ticket || 'No ticket'} · {labels[value.status]}</small></span><Plus size={14} /></button>)}{!results.length && <p>No available tasks match.</p>}</div>}</div><RelationshipRows values={values} type={type} removable onOpen={onOpen} onRemove={onRemove} /></section>;
+}
+
+function RelationshipRows({ values, type, removable, onOpen, onRemove }: { values: Deliverable[]; type: 'subtask' | 'dependency'; removable: boolean; onOpen: (id: string) => void; onRemove: (id: string) => void }) {
+  return <div className="relationship-list">{values.map((value) => <div key={value._id}><button className="relationship-main" onClick={() => onOpen(value._id)}><span className={`status-dot ${value.status}`} /><span><strong>{value.title}</strong><small>{labels[value.status]} · {value.ticket || 'No ticket'}{type === 'dependency' && !['done', 'deployed'].includes(value.status) ? ' · Blocking' : ''}</small></span></button>{removable && <button className="relationship-remove" aria-label={`Remove ${value.title}`} onClick={() => onRemove(value._id)}><X size={14} /></button>}</div>)}{!values.length && <p className="muted">No {type === 'subtask' ? 'subtasks' : 'dependencies'} linked.</p>}</div>;
 }
 
 function WorklogRow({ worklog, canManage, pending, onSave, onDelete }: { worklog: Worklog; canManage: boolean; pending: boolean; onSave: (value: Pick<Worklog, 'workDate' | 'minutes' | 'note'>) => Promise<unknown>; onDelete: () => Promise<unknown> }) {

@@ -3,7 +3,7 @@ import { z } from 'zod';
 export const STATUSES = ['backlog', 'todo', 'doing', 'review', 'done', 'deployed'] as const;
 export const OPEN_STATUSES = ['todo', 'doing', 'review'] as const;
 export const ROLES = ['team', 'admin'] as const;
-export const PRIORITIES = ['high', 'medium', 'low'] as const;
+export const PRIORITIES = ['critical', 'high', 'medium', 'low'] as const;
 export type Status = (typeof STATUSES)[number];
 export type Role = (typeof ROLES)[number];
 export type Priority = (typeof PRIORITIES)[number];

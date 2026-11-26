@@ -14,14 +14,16 @@ Base path: /api/v1. Project routes use an HTTP-only signed project-session cooki
 | POST /projects/:projectId/lock | active session | Clear session |
 | PATCH /projects/:projectId/passwords | Admin | Change passwords and invalidate earlier sessions |
 | GET /projects/:projectId/snapshot | Team/Admin | Scoped workspace data |
+| GET /projects/:projectId/analytics?month=YYYY-MM | Team/Admin | Daily capacity, assignee-attributed effort, monthly member totals and four-week burndown |
 | POST /projects/:projectId/members | Admin | Create member; name and email required |
 | PUT /projects/:projectId/roster/:memberId/:date | Self/Admin | Set General, Night, Off or Leave for one IST date; Leave stays synchronized |
 | POST/PUT/PATCH deliverable routes | Team/Admin | Create/edit/status workflows |
+| POST/DELETE deliverable relationship routes | Team/Admin | Add/remove cycle-safe subtasks and dependencies; unfinished dependencies block completion |
 | DELETE deliverable | Admin | Audited soft delete |
 | POST comments/worklogs | Team/Admin | Create member-attributed comments and verified effort notes |
 | PATCH/DELETE own comments/worklogs | Team | Correct or remove entries created by the signed-in member |
 | PATCH/DELETE any comments/worklogs | Admin | Correct or remove any project entry |
 
-Errors use {error, message?, issues?}. Status 401 means a password/session is missing or invalid; 403 means the email is not an active project member or Admin mode is required; 404 is scoped absence; 409 is a version conflict.
+Errors use {error, message?, issues?}. Status 401 means a password/session is missing or invalid; 403 means the email is not an active project member or Admin mode is required; 404 is scoped absence; 409 covers version conflicts and invalid workflow transitions.
 
 Socket.IO reads the same signed cookie and permits only the cookie project room. Delivery events invalidate the project snapshot.

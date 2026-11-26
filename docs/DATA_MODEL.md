@@ -10,8 +10,8 @@ Hierarchy: local Organization -> Portfolio -> Project. Project-owned documents c
 | Tower | Project workstream |
 | Member | Manually managed schedulable person; name and unique project email required |
 | DirectoryContact | Imported address-book profile |
-| Deliverable | Six-stage work, dates, effort, blockers, quality, comments and status history |
-| Worklog | Member-attributed verified effort and detail notes |
+| Deliverable | Six-stage work, separate delivery/deployment dates, effort, one optional subtask parent, dependency links, blockers, comments and status history |
+| Worklog | Verified effort entry; reporting attributes hours to the task's primary assignee while preserving the submitting member for audit |
 | Attachment | Protected storage metadata |
 | AuditEvent | Mode/action/entity/before/after/metadata |
 | Notification | Shared project notification state |
@@ -21,3 +21,5 @@ Hierarchy: local Organization -> Portfolio -> Project. Project-owned documents c
 | LegacyActivity | Preserved source activity |
 
 There are no User or Membership identity models. Team members are project data, not login accounts.
+
+Daily capacity is calculated from the roster and allocation: General/Night contributes 8 hours multiplied by allocation, while Leave/Off contributes zero. Analytics are recalculated from current non-deleted tasks and worklogs.

@@ -59,7 +59,7 @@ img, canvas { max-width: 100%; }
   .calendar-day-panel > div { max-height: 390px; }
   .roster table { min-width: 950px; }
   .roster td:first-child { min-width: 165px; }
-  .roster-select { min-width: 118px; padding-left: 7px; font-size: 9px; }
+  .roster-select { min-width: 118px; padding-left: 7px; font-size: 9.45px; }
   .roster-summary { gap: 8px 12px; }
   .taxonomy-create, .taxonomy-row { grid-template-columns: minmax(0, 1fr) 42px; }
   .taxonomy-create > .button, .taxonomy-row > .button { width: 100%; grid-column: 1 / -1; }
@@ -74,7 +74,7 @@ img, canvas { max-width: 100%; }
   .admin-toggle { width: 24px; height: 24px; padding: 4px; flex: 0 0 24px; }
   .admin-toggle span { display: none; }
   .admin-toggle i { width: 14px; height: 14px; }
-  .global-search input { height: 32px; min-height: 32px; padding-left: 30px; font-size: 11px; text-overflow: ellipsis; }
+  .global-search input { height: 32px; min-height: 32px; padding-left: 30px; font-size: 11.55px; text-overflow: ellipsis; }
   .global-search svg { left: 8px; width: 14px; }
   .search-results { position: fixed; top: 49px; left: 8px; right: 8px; width: auto; }
   .notification-popover { position: fixed; top: 49px; right: 8px; width: calc(100vw - 16px); max-height: calc(100vh - 65px); }
@@ -83,7 +83,7 @@ img, canvas { max-width: 100%; }
   .page-head { margin-bottom: 17px; }
   .page-head h1 { font-size: 23px; }
   .page-actions { gap: 6px; }
-  .page-actions input, .page-actions select { font-size: 10px; }
+  .page-actions input, .page-actions select { font-size: 10.5px; }
   .metric { padding: 11px 10px; }
   .metric > strong { font-size: 20px; }
   .panel > header { padding-inline: 12px; }
@@ -129,7 +129,7 @@ img, canvas { max-width: 100%; }
   .topbar { padding-inline: 5px; }
   .page { padding-inline: 8px; }
   .metric-grid { gap: 6px; }
-  .metric p { font-size: 9px; }
+  .metric p { font-size: 9.45px; }
   .page-actions { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 34px; }
   .project-list > a { grid-template-columns: 34px minmax(0, 1fr); }
   .project-list > a > svg { display: none; }

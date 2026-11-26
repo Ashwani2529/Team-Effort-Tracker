@@ -29,7 +29,7 @@ export function Shell({ projects }: { projects: PublicProject[] }) {
     if (!snapshot.data) return;
     const socket = io('/', { withCredentials: true });
     socket.emit('project:join', projectId);
-    ['deliverable:created', 'deliverable:updated', 'deliverable:deleted', 'roster:updated'].forEach((event) => socket.on(event, () => client.invalidateQueries({ queryKey: ['snapshot', projectId] })));
+    ['deliverable:created', 'deliverable:updated', 'deliverable:deleted', 'roster:updated'].forEach((event) => socket.on(event, () => { client.invalidateQueries({ queryKey: ['snapshot', projectId] }); client.invalidateQueries({ queryKey: ['analytics', projectId] }); }));
     return () => { socket.disconnect(); };
   }, [client, projectId, snapshot.data]);
   const admin = useMutation({ mutationFn: (password?: string) => call('/projects/' + projectId + '/admin-mode', { method: 'POST', body: JSON.stringify(password ? { password } : {}) }), onSuccess: async () => { setAdminDialog(false); setAdminPassword(''); await client.invalidateQueries({ queryKey: ['snapshot', projectId] }); }, onError: (error) => { if (error instanceof ApiError && error.payload?.error === 'admin_password_required') setAdminDialog(true); } });
