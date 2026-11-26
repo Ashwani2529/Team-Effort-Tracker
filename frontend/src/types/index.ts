@@ -21,7 +21,7 @@ export interface Deliverable {
 export interface Notification { _id: string; title: string; body: string; readAt?: string; entityId?: string; createdAt: string }
 export interface Snapshot { project: Project; towers: Tower[]; flags: Flag[]; members: Member[]; deliverables: Deliverable[]; leaves: Leave[]; rosterOverrides: RosterOverride[]; activity: any[]; directory: any[]; notifications: Notification[]; access: { role: Role; memberId: string; memberName: string; memberEmail: string; adminVerified: boolean; sessionExpiresAt: number }; serverDate: string }
 export interface DailyCapacityPoint { date: string; capacity: number; logged: number; availability: number; overtime: number; adjustedEffort: number }
-export interface MemberCapacityPoint { memberId: string; name: string; capacity: number; logged: number; availability: number; overtime: number; todayCapacity: number; todayLogged: number; todayAvailability: number; todayOvertime: number; overPlanned: boolean }
+export interface MemberCapacityPoint { memberId: string; name: string; capacity: number; logged: number; availability: number; overtime: number; todayCapacity: number; todayLogged: number; todayAvailability: number; todayOvertime: number }
 export interface BurndownPoint { date: string; label: string; ideal: number; actual: number; logged: number; variance: number }
 export interface ProjectAnalytics {
   month: string; minMonth: string; maxMonth: string;
