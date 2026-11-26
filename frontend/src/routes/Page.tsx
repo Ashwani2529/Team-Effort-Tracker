@@ -79,18 +79,34 @@ function Overview({ snapshot, items, openTask }: ViewProps) {
   return <div className="stack"><div className="metric-grid"><Metric icon={<CircleDot />} label="Active work" value={active.length} hint={`${active.filter((i) => i.status === 'doing').length} in progress`} /><Metric icon={<CheckCircle2 />} label="Delivered" value={done.length} hint={`${items.length ? Math.round(done.length / items.length * 100) : 0}% of filtered work`} tone="green" /><Metric icon={<AlertCircle />} label="Needs attention" value={overdue.length + blocked.length} hint={`${overdue.length} overdue · ${blocked.length} blocked`} tone={overdue.length + blocked.length ? 'amber' : 'green'} /><Metric icon={<Clock3 />} label="Verified effort" value={`${actualTotal.toFixed(1)}h`} hint={`${estimateTotal.toFixed(0)}h Estimated Efforts`} /></div>{analytics && <TodayCapacity analytics={analytics} />}<div className="dashboard-grid"><Panel title="Delivery flow" subtitle="Work distribution by stage"><ResponsiveContainer width="100%" height={260}><BarChart data={byStage}><CartesianGrid vertical={false} stroke="var(--border)" /><XAxis dataKey="name" tick={{ fill: 'var(--muted)', fontSize: 11 }} axisLine={false} tickLine={false} /><YAxis tick={{ fill: 'var(--muted)', fontSize: 11 }} axisLine={false} tickLine={false} /><Tooltip contentStyle={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 10 }} /><Bar dataKey="count" radius={[5, 5, 0, 0]}>{byStage.map((entry) => <Cell key={entry.name} fill={entry.color} />)}</Bar></BarChart></ResponsiveContainer></Panel><Panel title="Attention queue" subtitle="Highest-risk active work"><div className="attention-list">{[...blocked, ...overdue.filter((x) => !x.blocked)].slice(0, 7).map((item) => <button key={item._id} onClick={() => openTask(item._id)}><span className={item.blocked ? 'risk-dot red' : 'risk-dot amber'} /><div><strong>{item.title}</strong><span>{memberOf(snapshot, item.primaryAssigneeId)?.name || 'Unassigned'} · {item.blocked ? item.blockReason : `Due ${item.dueDate}`}</span></div><ArrowUpRight size={15} /></button>)}{!blocked.length && !overdue.length && <div className="empty-state compact"><ShieldCheck />No work needs immediate attention.</div>}</div></Panel></div></div>;
 }
 
-function Framework({ snapshot, items, projectId }: ViewProps) {
+function Framework({ snapshot, items, projectId, openTask }: ViewProps) {
+  const [selectedMemberId, setSelectedMemberId] = useState<string>();
   const analytics = useProjectAnalytics(projectId, snapshot.serverDate.slice(0, 7)).data;
   const done = items.filter((i) => ['done', 'deployed'].includes(i.status)), due = done.filter((i) => i.dueDate && i.completionDate), onTime = due.length ? due.filter((i) => i.completionDate! <= i.dueDate!).length / due.length * 100 : 0;
-  const tests = items.reduce((n, i) => n + (i.testsTotal || 0), 0), automated = items.reduce((n, i) => n + (i.testsAutomated || 0), 0), blocked = items.filter((i) => i.blocked).length;
+  const blocked = items.filter((i) => i.blocked).length;
   const sections = [
     ['Demand', [['Backlog', items.filter((i) => i.status === 'backlog').length, 'items waiting'], ['Queued effort', items.reduce((n, i) => n + remaining(i), 0).toFixed(0), 'hours remaining']]],
     ['Capacity', analytics ? [['Scheduled today', analytics.today.capacity.toFixed(1), 'hours from roster + allocation'], ['Logged today', analytics.today.logged.toFixed(1), `${analytics.today.utilization.toFixed(0)}% utilization`], ['Available today', analytics.today.availability.toFixed(1), `${analytics.today.availableMembers} available members`], ['Adjusted team effort', analytics.today.adjustedEffort.toFixed(1), 'sum of max(logged - 1h, 0)'], ['Overtime', analytics.today.overtime.toFixed(1), 'hours beyond capacity'], ['Capacity coverage', analytics.today.availability ? (analytics.monthTotals.remainingEffort / analytics.today.availability).toFixed(1) : '—', 'working days at today capacity']] : [['Team size', snapshot.members.length, 'active members'], ['Committed load', items.filter((i) => ['todo', 'doing', 'review'].includes(i.status)).reduce((n, i) => n + remaining(i), 0).toFixed(0), 'hours active']]],
     ['Flow', [['Work in progress', items.filter((i) => ['doing', 'review'].includes(i.status)).length, 'doing + review'], ['Blocked', blocked, blocked ? 'requires action' : 'clear']]],
-    ['Delivery', [['On-time delivery', `${onTime.toFixed(0)}%`, `${due.length} dated outcomes`], ['Awaiting deploy', items.filter((i) => i.toBeDeployed && i.status !== 'deployed').length, 'planned releases']]],
-    ['Quality & automation', [['Test automation', tests ? `${Math.round(automated / tests * 100)}%` : '—', `${tests} tests recorded`], ['Escaped defects', items.reduce((n, i) => n + (i.escapedDefects || 0), 0), 'production defects']]]
+    ['Delivery', [['On-time delivery', `${onTime.toFixed(0)}%`, `${due.length} dated outcomes`], ['Awaiting deploy', items.filter((i) => i.toBeDeployed && i.status !== 'deployed').length, 'planned releases']]]
+    // Quality & automation is intentionally paused for now.
   ];
-  return <div className="framework-grid">{sections.map(([title, cards]: any) => <Panel key={title} title={title} subtitle="Explainable project indicators"><div className="scorecards">{cards.map(([label, value, hint]: any) => <div className="scorecard" key={label}><span>{label}</span><strong>{value}</strong><small>{hint}</small></div>)}</div></Panel>)}</div>;
+  const projectStart = String(snapshot.project.createdAt || snapshot.project.startDate || snapshot.serverDate).slice(0, 10);
+  const elapsedProjectDays = Math.max(1, differenceInCalendarDays(parseISO(snapshot.serverDate), parseISO(projectStart)) + 1);
+  const memberRows = snapshot.members.map((member) => {
+    const assigned = snapshot.deliverables.filter((item) => item.primaryAssigneeId === member._id || item.primaryAssigneeId === member.legacyId);
+    const verifiedHours = assigned.reduce((total, item) => total + (item.worklogMinutes || 0) / 60, 0);
+    return {
+      member,
+      total: assigned.length,
+      current: assigned.filter((item) => ['doing', 'review'].includes(item.status)).length,
+      completed: assigned.filter((item) => ['done', 'deployed'].includes(item.status)).length,
+      queued: assigned.filter((item) => ['backlog', 'todo'].includes(item.status)).length,
+      impact: verifiedHours / elapsedProjectDays
+    };
+  });
+  const selected = snapshot.members.find((member) => member._id === selectedMemberId);
+  return <><div className="framework-grid">{sections.map(([title, cards]: any) => <Panel key={title} title={title} subtitle="Explainable project indicators"><div className="scorecards">{cards.map(([label, value, hint]: any) => <div className="scorecard" key={label}><span>{label}</span><strong>{value}</strong><small>{hint}</small></div>)}</div></Panel>)}<Panel title="All-time team overview" subtitle={`Impact = verified worklog hours divided by ${elapsedProjectDays} elapsed project day${elapsedProjectDays === 1 ? '' : 's'}`}><div className="framework-member-table"><div className="framework-member-head"><span>Team member</span><span>Total tasks</span><span>In progress + review</span><span>Completed + deployed</span><span>Backlog + not started</span><span>Impact</span></div>{memberRows.map((row) => <button key={row.member._id} className="framework-member-row" onClick={() => setSelectedMemberId(row.member._id)}><span className="framework-member-name"><i className="avatar mini" style={{ background: row.member.color }}>{initials(row.member.name)}</i><strong>{row.member.name}</strong></span><span><b>{row.total}</b><small>Total tasks</small></span><span><b>{row.current}</b><small>In progress + review</small></span><span><b>{row.completed}</b><small>Completed + deployed</small></span><span><b>{row.queued}</b><small>Backlog + not started</small></span><span><b>{row.impact.toFixed(2)}h/day</b><small>Impact</small></span></button>)}{!memberRows.length && <div className="empty-state compact">No team members have been added yet.</div>}</div></Panel></div>{selected && <MemberStatsDialog member={selected} deliverables={snapshot.deliverables} today={snapshot.serverDate} capacity={analytics?.members.find((value) => value.memberId === selected._id)} onClose={() => setSelectedMemberId(undefined)} onOpenTask={(id) => { setSelectedMemberId(undefined); openTask(id); }} />}</>;
 }
 
 function Board({ snapshot, items, openTask, onStatus }: ViewProps & { onStatus: (item: Deliverable, status: Status) => void }) {
@@ -119,8 +135,7 @@ function WorkList({ snapshot, items, openTask }: ViewProps) {
     listColumn.accessor('towerId', { header: 'Tower', cell: (c) => towerOf(snapshot, c.getValue())?.name || '—' }),
     listColumn.accessor('flagIds', { header: 'Tags', cell: (c) => <div className="chips">{(c.getValue() || []).map((id) => { const flag = snapshot.flags.find((value) => value._id === id); return flag && <span className="color-tag" style={{ '--tag-color': flag.color } as React.CSSProperties} key={id}>{flag.name}</span>; })}</div> }),
     listColumn.accessor('dueDate', { header: 'Due', cell: (c) => c.getValue() || '—' }),
-    listColumn.display({ id: 'blockedBy', header: 'Blocked by', cell: (c) => { const count = unfinishedDependencies(c.row.original, snapshot).length; return count ? <span className="chip danger">{count} task{count === 1 ? '' : 's'}</span> : '—'; } }),
-    listColumn.display({ id: 'estimate', header: 'Estimated Efforts', cell: (c) => `${estimate(c.row.original).toFixed(1)}h` }),
+    listColumn.display({ id: 'estimate', header: 'Est. Efforts', cell: (c) => `${estimate(c.row.original).toFixed(1)}h` }),
     listColumn.display({ id: 'actual', header: 'Actual', cell: (c) => `${actualHours(c.row.original).toFixed(1)}h` }),
     listColumn.display({ id: 'remaining', header: 'Remaining', cell: (c) => `${['done', 'deployed'].includes(c.row.original.status) ? '0.0' : remaining(c.row.original).toFixed(1)}h` })
   ], [snapshot, openTask]);
@@ -206,7 +221,41 @@ function Reports({ snapshot, items }: ViewProps) {
 function ActivityView({ snapshot, projectId }: ViewProps) {
   const [month, setMonth] = useState(snapshot.serverDate.slice(0, 7));
   const analytics = useProjectAnalytics(projectId, month).data;
-  return <div className="stack"><MonthNavigator month={analytics?.month || month} minMonth={analytics?.minMonth || month} maxMonth={analytics?.maxMonth || month} onChange={setMonth} />{analytics && <><div className="metric-grid report-metrics"><Metric icon={<CircleDot />} label="Planned Efforts" value={`${analytics.monthTotals.estimatedEfforts.toFixed(1)}h`} hint="Current dynamic task estimates" /><Metric icon={<Clock3 />} label="Remaining work" value={`${analytics.monthTotals.remainingEffort.toFixed(1)}h`} hint="Open work after verified effort" /><Metric icon={<CheckCircle2 />} label="Effort logged" value={`${analytics.monthTotals.logged.toFixed(1)}h`} hint={`During ${analytics.month}`} tone="green" /><Metric icon={<AlertCircle />} label="Current variance" value={`${(analytics.burndown.at(-1)?.variance || 0).toFixed(1)}h`} hint="Actual minus ideal remaining" tone={(analytics.burndown.at(-1)?.variance || 0) > 0 ? 'amber' : 'green'} /></div><Panel title="Team burndown" subtitle="Four-week planned versus actual remaining effort"><ResponsiveContainer width="100%" height={330}><LineChart data={analytics.burndown}><CartesianGrid stroke="var(--border)" /><XAxis dataKey="label" tick={{ fill: 'var(--muted)', fontSize: 11 }} /><YAxis label={{ value: 'Hours remaining', angle: -90, position: 'insideLeft', fill: 'var(--muted)' }} tick={{ fill: 'var(--muted)', fontSize: 11 }} /><Tooltip /><Legend /><Line type="monotone" dataKey="ideal" name="Ideal remaining" stroke="#4da3e6" strokeWidth={2} dot /><Line type="monotone" dataKey="actual" name="Actual remaining" stroke="#8b5cf6" strokeWidth={2} dot /></LineChart></ResponsiveContainer></Panel></>}<Panel title="Audit & activity" subtitle="Immutable operational history"><div className="activity-list">{snapshot.activity.map((event) => <div key={event._id}><i /><div><strong>{event.by || 'System'}</strong><p>{event.text}</p></div><time>{event.at ? new Date(event.at).toLocaleString() : ''}</time></div>)}{!snapshot.activity.length && <div className="empty-state">No activity recorded for this project yet.</div>}</div></Panel></div>;
+  const fallback = useMemo(() => {
+    const monthStart = `${month}-01`, monthFinish = format(endOfMonth(parseISO(monthStart)), 'yyyy-MM-dd');
+    const relevant = snapshot.deliverables.filter((item) => {
+      const start = item.startDate || item.createdAt.slice(0, 10);
+      const finish = item.deploymentDate || item.completionDate || item.dueDate || monthFinish;
+      return start <= monthFinish && finish >= monthStart;
+    });
+    const loggedThrough = (item: Deliverable, date: string) => item.worklogs.filter((entry) => entry.workDate <= date).reduce((total, entry) => total + entry.minutes / 60, 0);
+    const loggedBeforeMonth = (item: Deliverable) => item.worklogs.filter((entry) => entry.workDate < monthStart).reduce((total, entry) => total + entry.minutes / 60, 0);
+    const totalPlanned = relevant.reduce((total, item) => total + Math.max(estimate(item) - loggedBeforeMonth(item), 0), 0);
+    const checkpoints = [monthStart, format(addDays(parseISO(monthStart), 6), 'yyyy-MM-dd'), format(addDays(parseISO(monthStart), 13), 'yyyy-MM-dd'), format(addDays(parseISO(monthStart), 20), 'yyyy-MM-dd'), monthFinish].filter((date, index, all) => date <= monthFinish && all.indexOf(date) === index);
+    const burndown = checkpoints.map((date, index) => {
+      const actual = relevant.reduce((total, item) => {
+        const finished = item.deploymentDate || item.completionDate;
+        return finished && finished <= date ? total : total + Math.max(estimate(item) - loggedThrough(item, date), 0);
+      }, 0);
+      const ideal = totalPlanned * (1 - index / Math.max(checkpoints.length - 1, 1));
+      const logged = relevant.reduce((total, item) => total + item.worklogs.filter((entry) => entry.workDate >= monthStart && entry.workDate <= date).reduce((sum, entry) => sum + entry.minutes / 60, 0), 0);
+      return { date, label: index === 0 ? 'Start' : index === checkpoints.length - 1 ? 'Month end' : `Week ${index}`, ideal, actual, logged, variance: actual - ideal };
+    });
+    return {
+      burndown,
+      estimatedEfforts: relevant.reduce((total, item) => total + estimate(item), 0),
+      remainingEffort: relevant.filter((item) => !['done', 'deployed'].includes(item.status)).reduce((total, item) => total + remaining(item), 0),
+      logged: relevant.reduce((total, item) => total + item.worklogs.filter((entry) => entry.workDate >= monthStart && entry.workDate <= monthFinish).reduce((sum, entry) => sum + entry.minutes / 60, 0), 0)
+    };
+  }, [month, snapshot.deliverables]);
+  const burndown = analytics?.burndown?.length ? analytics.burndown : fallback.burndown;
+  const estimatedEfforts = analytics?.monthTotals.estimatedEfforts ?? fallback.estimatedEfforts;
+  const remainingEffort = analytics?.monthTotals.remainingEffort ?? fallback.remainingEffort;
+  const logged = analytics?.monthTotals.logged ?? fallback.logged;
+  const variance = burndown.at(-1)?.variance || 0;
+  const minMonth = analytics?.minMonth || String(snapshot.project.createdAt || snapshot.project.startDate || snapshot.serverDate).slice(0, 7);
+  const maxMonth = analytics?.maxMonth || snapshot.serverDate.slice(0, 7);
+  return <div className="stack"><MonthNavigator month={analytics?.month || month} minMonth={minMonth} maxMonth={maxMonth} onChange={setMonth} /><div className="metric-grid report-metrics"><Metric icon={<CircleDot />} label="Planned Efforts" value={`${estimatedEfforts.toFixed(1)}h`} hint="Current dynamic task estimates" /><Metric icon={<Clock3 />} label="Remaining work" value={`${remainingEffort.toFixed(1)}h`} hint="Open work after verified effort" /><Metric icon={<CheckCircle2 />} label="Effort logged" value={`${logged.toFixed(1)}h`} hint={`During ${month}`} tone="green" /><Metric icon={<AlertCircle />} label="Current variance" value={`${variance.toFixed(1)}h`} hint="Actual minus ideal remaining" tone={variance > 0 ? 'amber' : 'green'} /></div><Panel title="Team-level Burndown Chart" subtitle="Four-week planned versus actual remaining effort"><ResponsiveContainer width="100%" height={330}><LineChart data={burndown}><CartesianGrid stroke="var(--border)" /><XAxis dataKey="label" tick={{ fill: 'var(--muted)', fontSize: 11 }} /><YAxis label={{ value: 'Hours remaining', angle: -90, position: 'insideLeft', fill: 'var(--muted)' }} tick={{ fill: 'var(--muted)', fontSize: 11 }} /><Tooltip /><Legend /><Line type="monotone" dataKey="ideal" name="Ideal remaining" stroke="#4da3e6" strokeWidth={2} dot /><Line type="monotone" dataKey="actual" name="Actual remaining" stroke="#8b5cf6" strokeWidth={2} dot /></LineChart></ResponsiveContainer></Panel><Panel title="Audit & activity" subtitle="Immutable operational history"><div className="activity-list">{snapshot.activity.map((event) => <div key={event._id}><i /><div><strong>{event.by || 'System'}</strong><p>{event.text}</p></div><time>{event.at ? new Date(event.at).toLocaleString() : ''}</time></div>)}{!snapshot.activity.length && <div className="empty-state">No activity recorded for this project yet.</div>}</div></Panel></div>;
 }
 function Admin({ snapshot, projectId }: ViewProps) {
   const call = useApi();

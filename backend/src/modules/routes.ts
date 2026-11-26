@@ -110,7 +110,9 @@ router.get('/projects/:projectId/analytics', async (req, res) => {
     Worklog.find({ ...q, deletedAt: null }).lean(), Leave.find(q).lean(), RosterOverride.find(q).lean()
   ]);
   if (!project) { res.status(404).json({ error: 'project_not_found' }); return; }
-  const currentMonth = istDate().slice(0, 7), minMonth = String((project as any).createdAt || (project as any).startDate || istDate()).slice(0, 7);
+  const currentMonth = istDate().slice(0, 7);
+  const projectDate = new Date((project as any).createdAt || (project as any).startDate || istDate());
+  const minMonth = Number.isNaN(projectDate.getTime()) ? currentMonth : projectDate.toISOString().slice(0, 7);
   const selectedMonth = month < minMonth ? minMonth : month > currentMonth ? currentMonth : month;
   res.json(calculateProjectAnalytics({ project, members, deliverables, worklogs, leaves, overrides, month: selectedMonth, today: istDate() }));
 });

@@ -88,7 +88,8 @@ export function calculateProjectAnalytics({ project, members, deliverables, work
   const totals = daily.reduce((value, entry) => ({ capacity: value.capacity + entry.capacity, logged: value.logged + entry.logged, availability: value.availability + entry.availability, overtime: value.overtime + entry.overtime, adjustedEffort: value.adjustedEffort + entry.adjustedEffort }), { capacity: 0, logged: 0, availability: 0, overtime: 0, adjustedEffort: 0 });
   const estimatedEfforts = relevant.reduce((sum, item) => sum + Number(item.estimatedHours || 0), 0);
   const remainingEffort = relevant.filter((item) => !['done', 'deployed'].includes(item.status)).reduce((sum, item) => sum + Math.max(Number(item.estimatedHours || 0) - Number(item.worklogMinutes || 0) / 60, 0), 0);
-  const projectCreated = String(project.createdAt || project.startDate || today).slice(0, 7);
+  const projectDate = new Date(project.createdAt || project.startDate || today);
+  const projectCreated = Number.isNaN(projectDate.getTime()) ? today.slice(0, 7) : projectDate.toISOString().slice(0, 7);
   const maxMonth = today.slice(0, 7);
   return {
     month, minMonth: projectCreated, maxMonth, today: todaySummary,

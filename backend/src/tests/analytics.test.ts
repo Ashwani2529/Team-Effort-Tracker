@@ -15,6 +15,7 @@ describe('project analytics', () => {
     expect(assignee).toMatchObject({ todayCapacity: 4, todayLogged: 2, todayAvailability: 2, overPlanned: true });
     expect(result.today).toMatchObject({ capacity: 12, logged: 2, availability: 10, adjustedEffort: 1 });
     expect(result.monthTotals.remainingEffort).toBe(6);
+    expect(result.minMonth).toBe('2026-11');
   });
 
   it('recalculates burndown from the current non-deleted dataset', () => {
